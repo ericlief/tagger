@@ -25,10 +25,10 @@ def evaluate(brill_tagger):
     res = brill_tagger.evaluate(test_data)
     print(res)
     rules = brill_tagger.rules()
-    print(rules)
+    # print(rules)
 
-
-stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
+# stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
 words = []
 tags = []
 test_data = []
