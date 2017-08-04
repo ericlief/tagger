@@ -942,8 +942,8 @@ if __name__ == '__main__':
     pos1 += 1    # skip first '#'
     for word, tag in zip(words[pos1:], tags[pos1:]):
         if word == '###':
-            sent = []
             test_data.append(sent)
+            sent = []
             continue
         sent.append((word, tag))
 
@@ -1111,8 +1111,11 @@ if __name__ == '__main__':
             n += 1
         untagged_sents.append(untagged_sent)
 
-    print(untagged_sents)
-    print(tagged_sents)
+    print(untagged_sents[0])
+    print(untagged_sents[-1])
+    print(heldout_data[0])
+    print(heldout_data[-1])
+    # print(tagged_sents)
     # untagged = [untagged]
 
     # strip test data, the last 20k
