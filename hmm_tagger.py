@@ -1046,8 +1046,8 @@ if __name__ == '__main__':
     # L = tagger.smooth_tag_model(heldout_data)
 
     tagger = HMMTagger.train(train_data)
-    # tagger.initialize_params(heldout_data, mode='unk_threshold')
-    tagger.initialize_params(heldout_data, mode='unk_heldout')
+    tagger.initialize_params(heldout_data, mode='unk_threshold')
+    # tagger.initialize_params(heldout_data, mode='unk_heldout')
     # tagger.initialize_params(heldout_data)
     print(tagger._lambdas)
 
