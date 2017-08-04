@@ -178,7 +178,7 @@ class HMMTagger:
         w = words[0]
         for t in cls._tags:
             # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
-            viterbi[1, t] = cls._bi_transition_counts['<s>', t] * cls.emission_prob(w, t)
+            viterbi[1, t] = cls._bi_transition_counts['<s>', t] * cls.calculate_emission_prob(w, t)
 
             path[1, t] = []
             # path[t] = []
@@ -219,7 +219,7 @@ class HMMTagger:
                 #
                 #     # print('v=', v)
                 viterbi[i, v], u_max = max([(viterbi[i-1, u] * float(cls._bi_transitions[u, v]/cls._uni_transitions[u])
-                                               * cls.emission_prob(w, v), u) for u in cls._tags])
+                                             * cls.calculate_emission_prob(w, v), u) for u in cls._tags])
 
                 # print('u_max=', u_max)
                 # path[i, v] = path[i-1, u_max] + [u_max]
@@ -281,9 +281,9 @@ class HMMTagger:
                                 for t in cls._tags for u in cls._tags])
         # print(u_max, v_max, max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                         for t in cls._tags for u in cls._tags]))
-        for t in cls._tags:
-            for u in cls._tags:
-                print(viterbi[n,t,u] * cls.calculate_interpolated_p(t, u, '</s>', L))
+        # for t in cls._tags:
+        #     for u in cls._tags:
+                # print(viterbi[n,t,u] * cls.calculate_interpolated_p(t, u, '</s>', L))
         cls._viterbi = viterbi
         cls._path = path
         # print(viterbi)
@@ -509,25 +509,6 @@ class HMMTagger:
         return tags
 
     @classmethod
-    def unkown_word_smoothing(cls, threshold=10):
-        emission_counts = defaultdict(int)
-        smoothed_probs = defaultdict(lambda: 0.0)
-
-        # Convert all words below threshold to ``<unk>``
-        for (word, tag) in cls._emission_counts:
-            cnt = cls._emission_counts[(word, tag)]
-            emission_counts[(word, tag)] = cnt
-            if cnt < threshold:
-                emission_counts[('<unk>', tag)] += cnt
-
-        # Calculate emission probabilities
-        for w, t in emission_counts:
-            # unk_probs[w, t] = unk[w, t] / n
-            smoothed_probs[w, t] = emission_counts[w, t] / cls._uni_transition_counts[t]
-
-        return smoothed_probs
-
-    @classmethod
     def possible_tags(cls, i):
         if i == -1:
             return set([''])
@@ -630,22 +611,41 @@ class HMMTagger:
     #     return float(lex_p / c_t)
 
     @classmethod
-    def emission_prob(cls, w, t):
+    def calculate_emission_prob(cls, w, t):
         """
-        Calculate smoothed emission (lexical) probability.
+        Helper method to calculate the smoothed emission
+        (lexical) probability.
         :param w:
         :param t:
         :return: p
         """
+        #
+        # p_w_t = cls._emission_counts[w, t]
+        # p_t = cls._uni_transition_counts[t]
 
-        p_w_t = cls._emissions[w, t]
-        p_t = cls._uni_transitions[t] / cls._n
-
-        return float(p_w_t / p_t)
-
+        return float(cls._emission_counts[w, t] / cls._uni_transition_counts[t])
 
     @classmethod
-    def smooth_lexical(cls, heldout_data):
+    def smooth_unkown_words_with_threshold(cls, threshold=10):
+        emission_counts = defaultdict(int)
+        smoothed_probs = defaultdict(lambda: 0.0)
+
+        # Convert all words below threshold to ``<unk>``
+        for (word, tag) in cls._emission_counts:
+            cnt = cls._emission_counts[(word, tag)]
+            emission_counts[(word, tag)] = cnt
+            if cnt < threshold:
+                emission_counts[('<unk>', tag)] += cnt
+
+        # Calculate emission probabilities
+        for w, t in emission_counts:
+            # unk_probs[w, t] = unk[w, t] / n
+            smoothed_probs[w, t] = emission_counts[w, t] / cls._uni_transition_counts[t]
+
+        return smoothed_probs
+
+    @classmethod
+    def smooth_unknown_words_from_heldout(cls, heldout_data):
         """
         :param heldout_data:
         :return: smoothed emission params
@@ -854,7 +854,7 @@ class HMMTagger:
         return interpolated_p
 
     @classmethod
-    def initialize_params(cls, heldout_data, mode='unk'):
+    def initialize_params(cls, heldout_data, mode=None):
 
         # Iterate through counts and calculate the respective
         # tag transition probabilities
@@ -869,10 +869,18 @@ class HMMTagger:
             cls._uni_tag_probs[v] = float(cls._uni_transition_counts[v] / cls._n)
 
         # Smooth lexical model
-        if mode == 'heldout_estimation':
-            cls._emission_probs = cls.smooth_lexical(heldout_data)
-        elif mode == 'unk':
-            cls._emission_probs = cls.unkown_word_smoothing()
+        if mode == 'unk_heldout':
+            cls._emission_probs = cls.smooth_unknown_words_from_heldout(heldout_data)
+        elif mode == 'unk_threshold':
+            cls._emission_probs = cls.smooth_unkown_words_with_threshold()
+        elif mode == None:
+            cls._emission_probs = defaultdict(lambda : 0.0)
+            # Calculate emission probabilities
+            for w, t in cls._emission_counts:
+                # unk_probs[w, t] = unk[w, t] / n
+                cls._emission_probs[w, t] = cls.calculate_emission_prob(w, t)
+        else:
+            raise Exception
 
         # Smooth tag model
         cls._lambdas = cls.smooth_tag_model(heldout_data)
@@ -924,7 +932,7 @@ if __name__ == '__main__':
 
     # print('initial split')
 
-    # Get test data, the last 20k
+    # Get test data, the last 40k
     test_data = []
     sent = []
     pos1 = -40000
@@ -1038,7 +1046,9 @@ if __name__ == '__main__':
     # L = tagger.smooth_tag_model(heldout_data)
 
     tagger = HMMTagger.train(train_data)
-    tagger.initialize_params(heldout_data, mode='heldout_estimation')
+    # tagger.initialize_params(heldout_data, mode='unk_threshold')
+    tagger.initialize_params(heldout_data, mode='unk_heldout')
+    # tagger.initialize_params(heldout_data)
     print(tagger._lambdas)
 
     # print(tagger._emissions)
@@ -1063,34 +1073,46 @@ if __name__ == '__main__':
     # print(tagger._words)
     #print(tagger._emissions)
 
-    # tag
+    # # open unittest test data
+    # untagged_sents = []
+    # tagged_sents = []
+    # n = 0
+    # with open('test.txt', 'r') as f:
+    #     untagged_sent = []
+    #     tagged_sent = []
+    #     first = f.readline().rstrip()           # get first '###'
+    #     if first != '###/###':
+    #         f.seek(0)
+    #     for line in f:
+    #         # print(line)
+    #         if line == '\n':
+    #             continue
+    #         # word, tag = line.rstrip().split('/')
+    #         # word = line.rstrip()
+    #         word, tag = line.rstrip().split('/')
+    #         if word == '###':
+    #             untagged_sents.append(untagged_sent)
+    #             untagged_sent = []
+    #             tagged_sents.append(tagged_sent)
+    #             tagged_sent = []
+    #             continue
+    #         untagged_sent.append(word)
+    #         tagged_sent.append((word, tag))
+    #         n += 1
+
+    # Use test data
     untagged_sents = []
-    tagged_sents = []
+    tagged_sents = test_data
     n = 0
-    with open('test.txt', 'r') as f:
+    for tagged_sent in tagged_sents:
         untagged_sent = []
-        tagged_sent = []
-        first = f.readline().rstrip()           # get first '###'
-        if first != '###/###':
-            f.seek(0)
-        for line in f:
-            # print(line)
-            if line == '\n':
-                continue
-            # word, tag = line.rstrip().split('/')
-            # word = line.rstrip()
-            word, tag = line.rstrip().split('/')
-            if word == '###':
-                untagged_sents.append(untagged_sent)
-                untagged_sent = []
-                tagged_sents.append(tagged_sent)
-                tagged_sent = []
-                continue
+        for word, tag in tagged_sent:
             untagged_sent.append(word)
-            tagged_sent.append((word, tag))
             n += 1
+        untagged_sents.append(untagged_sent)
 
-
+    print(untagged_sents)
+    print(tagged_sents)
     # untagged = [untagged]
 
     # strip test data, the last 20k
@@ -1118,8 +1140,8 @@ if __name__ == '__main__':
     # print(tagger._bi_transitions)
     # print(untagged)
 
-    print(untagged_sents)
-    print(tagged_sents)
+    # print(untagged_sents)
+    # print(tagged_sents)
 
     with open('tagged.txt', 'w') as f:
         correct = 0
@@ -1132,10 +1154,14 @@ if __name__ == '__main__':
             for j, (w, t) in enumerate(zip(sent, tags)):
                 f.write(str(w) + '/' + str(t) + '\n')
                 if tagged_sents[i][j] == (w, t):
-                    f.write('correct' + str(tagged_sents[i][j]) + str((w, t)) + '\n')
+                    f.write('correct' + str(tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
                     correct += 1
-                acc = correct / n
-                f.write('Accuracy = ' + str(acc) + '\n')
+                else:
+                    f.write('incorrect' + str(tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
+        # print(correct)
+        # print(n)
+        acc = correct / n
+        f.write('Accuracy = ' + str(acc) + '\n')
                     # te('viterbi')
             #     f.write(str(x) + '\n')
             # for x in tagger._path.items():
