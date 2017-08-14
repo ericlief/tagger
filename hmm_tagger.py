@@ -271,14 +271,18 @@ class HMMTagger:
                          viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
                          for t in cls.possible_tags(i - 2)])
 
-                    # path[i, u, v] = t_max
-                    back_ptr[u, v] = path[t_max, u] + [v]
-            path = back_ptr
+                    path[i, u, v] = t_max
+                    #back_ptr[u, v] = path[t_max, u] + [v]
+            # path = back_ptr
 
         # Final step, to sentence
         # print(n,i, )
-        prob, u_max, v_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
-                                for t in cls._tags for u in cls._tags])
+        # prob, u_max, v_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+        #                         for t in cls._tags for u in cls._tags])
+
+        # fixed
+        prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+                                              for t in cls._tags for u in cls._tags])
         # print(u_max, v_max, max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                         for t in cls._tags for u in cls._tags]))
         # for t in cls._tags:
@@ -287,7 +291,9 @@ class HMMTagger:
         cls._viterbi = viterbi
         cls._path = path
         # print(viterbi)
-        return path[u_max, v_max]
+
+        # return path[u_max, v_max]
+        return HMMTagger.backtrace(path, n, u_max)
 
         # viterbi[n, u, '</s>'], t_max, u_max = max(
         #     [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
@@ -914,8 +920,8 @@ class HMMTagger:
 
 if __name__ == '__main__':
 
-    #stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
-    stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
+    # stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     words = []
     tags = []
     for line in stream:
@@ -936,7 +942,7 @@ if __name__ == '__main__':
     test_data = []
     sent = []
     pos1 = -40000
-    # pos1 = -20
+    #pos1 = -20
     while words[pos1] != '###':
         pos1 += 1
     pos1 += 1    # skip first '#'
@@ -1073,50 +1079,49 @@ if __name__ == '__main__':
     # print(tagger._words)
     #print(tagger._emissions)
 
-    # # open unittest test data
-    # untagged_sents = []
-    # tagged_sents = []
-    # n = 0
-    # with open('test.txt', 'r') as f:
-    #     untagged_sent = []
-    #     tagged_sent = []
-    #     first = f.readline().rstrip()           # get first '###'
-    #     if first != '###/###':
-    #         f.seek(0)
-    #     for line in f:
-    #         # print(line)
-    #         if line == '\n':
-    #             continue
-    #         # word, tag = line.rstrip().split('/')
-    #         # word = line.rstrip()
-    #         word, tag = line.rstrip().split('/')
-    #         if word == '###':
-    #             untagged_sents.append(untagged_sent)
-    #             untagged_sent = []
-    #             tagged_sents.append(tagged_sent)
-    #             tagged_sent = []
-    #             continue
-    #         untagged_sent.append(word)
-    #         tagged_sent.append((word, tag))
-    #         n += 1
-
-    # Use test data
+    # open unittest test data
     untagged_sents = []
-    tagged_sents = test_data
+    tagged_sents = []
     n = 0
-    for tagged_sent in tagged_sents:
+    with open('gold-cz.txt', 'r') as f:
         untagged_sent = []
-        for word, tag in tagged_sent:
+        tagged_sent = []
+        first = f.readline().rstrip()           # get first '###'
+        if first != '###/###':
+            f.seek(0)
+        for line in f:
+            # print(line)
+            if line == '\n':
+                continue
+            # word, tag = line.rstrip().split('/')
+            # word = line.rstrip()
+            word, tag = line.rstrip().split('/')
+            if word == '###':
+                untagged_sents.append(untagged_sent)
+                untagged_sent = []
+                tagged_sents.append(tagged_sent)
+                tagged_sent = []
+                continue
             untagged_sent.append(word)
+            tagged_sent.append((word, tag))
             n += 1
-        untagged_sents.append(untagged_sent)
 
-    print(untagged_sents[0])
-    print(untagged_sents[-1])
-    print(heldout_data[0])
-    print(heldout_data[-1])
-    # print(tagged_sents)
-    # untagged = [untagged]
+    # # Use test data
+    # untagged_sents = []
+    # tagged_sents = test_data
+    # n = 0
+    # for tagged_sent in tagged_sents:
+    #     untagged_sent = []
+    #     for word, tag in tagged_sent:
+    #         untagged_sent.append(word)
+    #         n += 1
+    #     untagged_sents.append(untagged_sent)
+    #
+    # print(untagged_sents[0])
+    # print(untagged_sents[-1])
+    # print(heldout_data[0])
+    # print(heldout_data[-1])
+
 
     # strip test data, the last 20k
     # for word, tag in zip(words[-40000:], tags[-40000:]):
@@ -1146,7 +1151,7 @@ if __name__ == '__main__':
     # print(untagged_sents)
     # print(tagged_sents)
 
-    with open('tagged.txt', 'w') as f:
+    with open('tagged-cz.txt', 'w') as f:
         correct = 0
         for i, sent in enumerate(untagged_sents):
             f.write('sentence ' + str(i) + '\n')
