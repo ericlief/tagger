@@ -253,8 +253,8 @@ class HMMTagger:
         path = {}
 
         # Initialization step
-        w1 = sent[0]
-        w2 = sent[1]
+        # w1 = sent[0]
+        # w2 = sent[1]
         viterbi[0, '<s>', '<s>'] = 1
         path[0, '<s>', '<s>'] = []
         #path['', ''] = []
@@ -330,7 +330,7 @@ class HMMTagger:
         while i > 2:
             t = path[i, u, v]
 
-            print(t, end=' ')
+            # print(t, end=' ')
             tags.insert(0, t)
             v = u
             u = t
@@ -776,7 +776,7 @@ if __name__ == '__main__':
             sent = []
             continue
         sent.append((word, tag))
-
+    print(test_data)
     #
     # test_data = [test_data]     # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
 
