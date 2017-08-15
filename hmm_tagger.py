@@ -254,9 +254,9 @@ class HMMTagger:
         # Initialization step
         w1 = sent[0]
         w2 = sent[1]
-        viterbi[0, '', ''] = 1
-        # path[0, '', ''] = ''
-        path['', ''] = []
+        viterbi[0, '<s>', '<s>'] = 1
+        path[0, '<s>', '<s>'] = []
+        #path['', ''] = []
 
         for i in range(1, n + 1):
             w = cls.next_word(sent, i - 1)
@@ -276,13 +276,18 @@ class HMMTagger:
             # path = back_ptr
 
         # Final step, to sentence
+
         # print(n,i, )
-        # prob, u_max, v_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+        # prob, u_max, v_max = mpathax([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                         for t in cls._tags for u in cls._tags])
 
         # fixed
         prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
                                               for t in cls._tags for u in cls._tags])
+
+        viterbi[n+1, u_max, '</s>'] = prob
+        path[n+1, u_max, '</s>'] = t_max
+
         # print(u_max, v_max, max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                         for t in cls._tags for u in cls._tags]))
         # for t in cls._tags:
@@ -291,235 +296,36 @@ class HMMTagger:
         cls._viterbi = viterbi
         cls._path = path
         # print(viterbi)
-
+        # print(path)
         # return path[u_max, v_max]
-        return HMMTagger.backtrace(path, n, u_max)
-
-        # viterbi[n, u, '</s>'], t_max, u_max = max(
-        #     [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
-        #
-        # # path[n, '</s>'] = path[n, u_max] + [u_max]
-        # path[n, u_max, '</s>'] = t_max
-        # return HMMTagger.backtrace(path, n, u_max)  # @classmethod
-
-
-            # print(viterbi[1, '<s>', u], viterbi[2, u, v])
-            #
-            # print('init PRP', viterbi[1, '<s>', 'PRP'])
-            # print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
-            # print('emission', cls._emission_probs['I', 'PRP'])
-            # print(cls._emission_counts['I', 'PRP'])
-            # print(cls._uni_transition_counts['PRP'])
-            # print('init PRP', viterbi[2, 'PRP', 'VB'])
-            # print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
-            # print('emission', cls._emission_probs['like', 'VB'])
-            # print(cls._emission_counts['like', 'VB'])
-            # print(cls._uni_transition_counts['VB'])
-            # print(viterbi[2, '``', 'PRP'])
-            # print(path[2, '``', 'PRP'])
-            # print(cls._tags)
-
-
-    # def tri_tag2(cls, sent):
-    #
-    #     print(sent)
-    #
-    #     # words = [w for sent in corpus for w in sent]
-    #     # print(words)
-    #     n = len(sent)
-    #     L = cls._lambdas
-    #     viterbi = {}
-    #     path = {}
-    #
-    #     # Initialization step
-    #     w1 = sent[0]
-    #     w2 = sent[1]
-    #     stop = 0
-    #
-    #     for t in cls._tags:
-    #
-    #         viterbi[1, '<s>', t] = cls.calculate_interpolated_p('<s>', '<s>', t, L) * cls._emission_probs[w1, t]
-    #
-    #         path[1, '<s>', t] = ''
-    #
-    #     res = []
-    #     for v in cls._tags:
-    #         for u in cls._tags:
-    #             # print(stop, u, v)
-    #             viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
-    #             v)
-    #
-    #             viterbi[2, u, v], t_max = max(
-    #                 [(viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
-    #                   v)
-    #                  for v in cls._tags])
-    #
-    #             # print(w, u, v)
-    #             # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
-    #             # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #             # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #             # viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
-    #             #
-    #             # path[1, '<s>', u] = ''
-    #             #
-    #             # # path[t] = []
-    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
-    #             #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
-    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
-    #             # path[2, u, v] = ''
-    #             #
-    #             #
-    #             # print('u_max=', t_max)
-    #             # path[i, v] = path[i-1, u_max] + [u_max]
-    #
-    #
-    #             path[i, u, v] = t_max
-    #
-    #
-    #
-    #             print(viterbi[1,'<s>',u], viterbi[2,u,v])
-    #
-    #             stop += 1
-    #
-    #     # for v in cls._tags:
-    #     #
-    #     #     for u in cls._tags:
-    #     #         print(stop, u, v)
-    #     #
-    #     #
-    #     #
-    #     #         # print(w, u, v)
-    #     #         # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
-    #     #         # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #     #         # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #     #         viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
-    #     #
-    #     #         path[1, '<s>', u] = ''
-    #     #
-    #     #         # path[t] = []
-    #     #         # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
-    #     #         #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
-    #     #         viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
-    #     #         path[2, u, v] = ''
-    #     #
-    #     #         print(viterbi[1,'<s>',u], viterbi[2,u,v])
-    #     #
-    #     #         stop += 1
-    #     #
-    #     #     # if u == 'PRP':
-    #     #     #     break
-    #
-    #
-    #     print('init PRP', viterbi[1,'<s>','PRP'])
-    #     print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
-    #     print('emission', cls._emission_probs['I', 'PRP'])
-    #     print(cls._emission_counts['I', 'PRP'])
-    #     print(cls._uni_transition_counts['PRP'])
-    #     print('init PRP', viterbi[2, 'PRP', 'VB'])
-    #     print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
-    #     print('emission', cls._emission_probs['like', 'VB'])
-    #     print(cls._emission_counts['like', 'VB'])
-    #     print(cls._uni_transition_counts['VB'])
-    #     print(viterbi[2, '``', 'PRP'])
-    #     print(path[2, '``', 'PRP'])
-    #     print(cls._tags)
-    #
-    #     # print(viterbi))
-    #     # Recursion step
-    #     for i in range(3, n + 1):
-    #         # temp_path = {}
-    #
-    #         w = sent[i - 1]
-    #         if w not in cls._words:
-    #             # print('unk word @', i, w)
-    #             w = '<unk>'
-    #
-    #             # for i, w in enumerate(words):
-    #             #     if i == 0:
-    #             # t = '<s>'
-    #             # u = '<s>'
-    #             #
-    #         # for t in cls._tags:
-    #         #     for u in cls._tags:
-    #         #         if t == '<s>' and u == '<s>':
-    #         #             pass
-    #
-    #         for v in cls._tags:
-    #             # print('VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV', v, w)
-    #             # j = 0
-    #             for u in cls._tags:
-    #             #     # if j > 5:
-    #             #     #     break
-    #             #     # print(u, viterbi[i-1, u] * float(cls._bi_transitions[u, v]/cls._uni_transitions[u])
-    #             #     #                            * float(cls._emissions[w, v]/cls._uni_transitions[v]))
-    #             #     print(w, u, v, viterbi[i - 1, u] * float(cls._bi_transitions[u, v] / cls._uni_transitions[u])
-    #             #           * cls.emission_prob(w, v))
-    #             #     # j+=1
-    #             #
-    #             #     # print('v=', v)
-    #             #     viterbi[i, u, v], t_max = max(
-    #             #         [(viterbi[i - 1, t, u] * float(cls._tri_transitions[t, u, v] / cls._bi_transitions[t, u])
-    #             #           * cls.emission_prob(w, v), t) for t in cls._tags])
-    #                 viterbi[i, u, v], t_max = max(
-    #                     [(viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
-    #                      for t in cls._tags])
-    #
-    #
-    #             # print('u_max=', t_max)
-    #                 # path[i, v] = path[i-1, u_max] + [u_max]
-    #                 path[i, u, v] = t_max
-    #             # print('path', path[i,v])
-    #
-    #             # temp_path[v] = path[u_max] + [v]
-    #
-    #             # if u_max == '``':
-    #             #     print('empty string')
-    #
-    #             # path = temp_path
-    #
-    #     # Final step, to sentence
-    #     # viterbi[n, u, '</s>'], t_max, u_max = max(
-    #     #     [(viterbi[n, t, u] * float(cls._tri_transitions[t, u, '</s>'] / cls._bi_transitions[t, u]), t, u)
-    #     #      for t in cls._tags for u in cls._tags])
-    #     viterbi[n, u, '</s>'], t_max, u_max = max(
-    #         [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
-    #
-    #     # path[n, '</s>'] = path[n, u_max] + [u_max]
-    #     path[n, u_max, '</s>'] = t_max
-    #
-    #     # print(cls._tags)
-    #
-    #
-    #     for i in range(2,3):
-    #         for u in cls._tags:
-    #             for v in cls._tags:
-    #
-    #                 print(i,u,v, repr(viterbi[i, u,v]))
-    #
-    #     # print(cls._emissions)
-    #     return HMMTagger.backtrace(path, n, u_max)
+        # return HMMTagger.backtrace(path, n+1, u_max)
+        return HMMTagger.backtrace(path, n+1, u_max)
 
     @staticmethod
     def backtrace(path, n, u):
         # print(path)
-        tags = []
+        # tags = []
+        tags = [u]
+        # print(u, end=' ')
         i = n
         v = '</s>'
-        while i > 1:
+        while i > 2:
             t = path[i, u, v]
-            print(t)
+
+            print(t, end=' ')
             tags.insert(0, t)
             v = u
             u = t
             i -= 1
+        # print()
         return tags
 
     @classmethod
     def possible_tags(cls, i):
         if i == -1:
-            return set([''])
+            return set(['<s>'])
         if i == 0:
-            return set([''])
+            return set(['<s>'])
         else:
             return cls._tags
 
@@ -942,7 +748,7 @@ if __name__ == '__main__':
     test_data = []
     sent = []
     pos1 = -40000
-    #pos1 = -20
+    # pos1 = -20
     while words[pos1] != '###':
         pos1 += 1
     pos1 += 1    # skip first '#'
@@ -1151,7 +957,7 @@ if __name__ == '__main__':
     # print(untagged_sents)
     # print(tagged_sents)
 
-    with open('tagged-cz.txt', 'w') as f:
+    with open('tagged.txt', 'w') as f:
         correct = 0
         for i, sent in enumerate(untagged_sents):
             f.write('sentence ' + str(i) + '\n')
@@ -1180,3 +986,211 @@ if __name__ == '__main__':
     # print(train_data[:5])
     # print(heldout_data)
     # print(tagger._bi_transition_counts['.', '</s>'])
+
+
+
+
+        # viterbi[n, u, '</s>'], t_max, u_max = max(
+        #     [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
+        #
+        # # path[n, '</s>'] = path[n, u_max] + [u_max]
+        # path[n, u_max, '</s>'] = t_max
+        # return HMMTagger.backtrace(path, n, u_max)  # @classmethod
+
+
+            # print(viterbi[1, '<s>', u], viterbi[2, u, v])
+            #
+            # print('init PRP', viterbi[1, '<s>', 'PRP'])
+            # print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
+            # print('emission', cls._emission_probs['I', 'PRP'])
+            # print(cls._emission_counts['I', 'PRP'])
+            # print(cls._uni_transition_counts['PRP'])
+            # print('init PRP', viterbi[2, 'PRP', 'VB'])
+            # print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
+            # print('emission', cls._emission_probs['like', 'VB'])
+            # print(cls._emission_counts['like', 'VB'])
+            # print(cls._uni_transition_counts['VB'])
+            # print(viterbi[2, '``', 'PRP'])
+            # print(path[2, '``', 'PRP'])
+            # print(cls._tags)
+
+
+    # def tri_tag2(cls, sent):
+    #
+    #     print(sent)
+    #
+    #     # words = [w for sent in corpus for w in sent]
+    #     # print(words)
+    #     n = len(sent)
+    #     L = cls._lambdas
+    #     viterbi = {}
+    #     path = {}
+    #
+    #     # Initialization step
+    #     w1 = sent[0]
+    #     w2 = sent[1]
+    #     stop = 0
+    #
+    #     for t in cls._tags:
+    #
+    #         viterbi[1, '<s>', t] = cls.calculate_interpolated_p('<s>', '<s>', t, L) * cls._emission_probs[w1, t]
+    #
+    #         path[1, '<s>', t] = ''
+    #
+    #     res = []
+    #     for v in cls._tags:
+    #         for u in cls._tags:
+    #             # print(stop, u, v)
+    #             viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
+    #             v)
+    #
+    #             viterbi[2, u, v], t_max = max(
+    #                 [(viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
+    #                   v)
+    #                  for v in cls._tags])
+    #
+    #             # print(w, u, v)
+    #             # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
+    #             # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
+    #             # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
+    #             # viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
+    #             #
+    #             # path[1, '<s>', u] = ''
+    #             #
+    #             # # path[t] = []
+    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
+    #             #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
+    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
+    #             # path[2, u, v] = ''
+    #             #
+    #             #
+    #             # print('u_max=', t_max)
+    #             # path[i, v] = path[i-1, u_max] + [u_max]
+    #
+    #
+    #             path[i, u, v] = t_max
+    #
+    #
+    #
+    #             print(viterbi[1,'<s>',u], viterbi[2,u,v])
+    #
+    #             stop += 1
+    #
+    #     # for v in cls._tags:
+    #     #
+    #     #     for u in cls._tags:
+    #     #         print(stop, u, v)
+    #     #
+    #     #
+    #     #
+    #     #         # print(w, u, v)
+    #     #         # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
+    #     #         # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
+    #     #         # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
+    #     #         viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
+    #     #
+    #     #         path[1, '<s>', u] = ''
+    #     #
+    #     #         # path[t] = []
+    #     #         # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
+    #     #         #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
+    #     #         viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
+    #     #         path[2, u, v] = ''
+    #     #
+    #     #         print(viterbi[1,'<s>',u], viterbi[2,u,v])
+    #     #
+    #     #         stop += 1
+    #     #
+    #     #     # if u == 'PRP':
+    #     #     #     break
+    #
+    #
+    #     print('init PRP', viterbi[1,'<s>','PRP'])
+    #     print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
+    #     print('emission', cls._emission_probs['I', 'PRP'])
+    #     print(cls._emission_counts['I', 'PRP'])
+    #     print(cls._uni_transition_counts['PRP'])
+    #     print('init PRP', viterbi[2, 'PRP', 'VB'])
+    #     print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
+    #     print('emission', cls._emission_probs['like', 'VB'])
+    #     print(cls._emission_counts['like', 'VB'])
+    #     print(cls._uni_transition_counts['VB'])
+    #     print(viterbi[2, '``', 'PRP'])
+    #     print(path[2, '``', 'PRP'])
+    #     print(cls._tags)
+    #
+    #     # print(viterbi))
+    #     # Recursion step
+    #     for i in range(3, n + 1):
+    #         # temp_path = {}
+    #
+    #         w = sent[i - 1]
+    #         if w not in cls._words:
+    #             # print('unk word @', i, w)
+    #             w = '<unk>'
+    #
+    #             # for i, w in enumerate(words):
+    #             #     if i == 0:
+    #             # t = '<s>'
+    #             # u = '<s>'
+    #             #
+    #         # for t in cls._tags:
+    #         #     for u in cls._tags:
+    #         #         if t == '<s>' and u == '<s>':
+    #         #             pass
+    #
+    #         for v in cls._tags:
+    #             # print('VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV', v, w)
+    #             # j = 0
+    #             for u in cls._tags:
+    #             #     # if j > 5:
+    #             #     #     break
+    #             #     # print(u, viterbi[i-1, u] * float(cls._bi_transitions[u, v]/cls._uni_transitions[u])
+    #             #     #                            * float(cls._emissions[w, v]/cls._uni_transitions[v]))
+    #             #     print(w, u, v, viterbi[i - 1, u] * float(cls._bi_transitions[u, v] / cls._uni_transitions[u])
+    #             #           * cls.emission_prob(w, v))
+    #             #     # j+=1
+    #             #
+    #             #     # print('v=', v)
+    #             #     viterbi[i, u, v], t_max = max(
+    #             #         [(viterbi[i - 1, t, u] * float(cls._tri_transitions[t, u, v] / cls._bi_transitions[t, u])
+    #             #           * cls.emission_prob(w, v), t) for t in cls._tags])
+    #                 viterbi[i, u, v], t_max = max(
+    #                     [(viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
+    #                      for t in cls._tags])
+    #
+    #
+    #             # print('u_max=', t_max)
+    #                 # path[i, v] = path[i-1, u_max] + [u_max]
+    #                 path[i, u, v] = t_max
+    #             # print('path', path[i,v])
+    #
+    #             # temp_path[v] = path[u_max] + [v]
+    #
+    #             # if u_max == '``':
+    #             #     print('empty string')
+    #
+    #             # path = temp_path
+    #
+    #     # Final step, to sentence
+    #     # viterbi[n, u, '</s>'], t_max, u_max = max(
+    #     #     [(viterbi[n, t, u] * float(cls._tri_transitions[t, u, '</s>'] / cls._bi_transitions[t, u]), t, u)
+    #     #      for t in cls._tags for u in cls._tags])
+    #     viterbi[n, u, '</s>'], t_max, u_max = max(
+    #         [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
+    #
+    #     # path[n, '</s>'] = path[n, u_max] + [u_max]
+    #     path[n, u_max, '</s>'] = t_max
+    #
+    #     # print(cls._tags)
+    #
+    #
+    #     for i in range(2,3):
+    #         for u in cls._tags:
+    #             for v in cls._tags:
+    #
+    #                 print(i,u,v, repr(viterbi[i, u,v]))
+    #
+    #     # print(cls._emissions)
+    #     return HMMTagger.backtrace(path, n, u_max)
+
