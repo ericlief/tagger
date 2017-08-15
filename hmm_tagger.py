@@ -293,8 +293,8 @@ class HMMTagger:
         # for t in cls._tags:
         #     for u in cls._tags:
                 # print(viterbi[n,t,u] * cls.calculate_interpolated_p(t, u, '</s>', L))
-        cls._viterbi = viterbi
-        cls._path = path
+        # cls._viterbi = viterbi
+        # cls._path = path
         # print(viterbi)
         # print(path)
         # return path[u_max, v_max]
