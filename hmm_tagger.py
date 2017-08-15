@@ -244,9 +244,10 @@ class HMMTagger:
         return HMMTagger.backtrace(path, n)
 
     @classmethod
-    def tri_tag(cls, sent):
+    def tri_tag(cls, sent, k):
 
         n = len(sent)
+        # k = 10              # this is k_best beam search
         L = cls._lambdas
         viterbi = {}
         path = {}
@@ -257,21 +258,38 @@ class HMMTagger:
         viterbi[0, '<s>', '<s>'] = 1
         path[0, '<s>', '<s>'] = []
         #path['', ''] = []
+        active_tags_t = set(['<s>'])
+        active_tags_u = set(['<s>'])
 
         for i in range(1, n + 1):
             w = cls.next_word(sent, i - 1)
-            back_ptr = {}
+            k_best = {}
+            # back_ptr = {}
             if w not in cls._words:
                 # print('unk word @', i, w)
                 w = '<unk>'
 
-            for v in cls.possible_tags(i):
-                for u in cls.possible_tags(i - 1):
-                    viterbi[i, u, v], t_max = max([(
-                         viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
-                         for t in cls.possible_tags(i - 2)])
+            # for v in cls.possible_tags(i):
+            for v in cls._tags:
 
+                # for u in cls.possible_tags(i - 1):
+                for u in active_tags_u:
+
+                    # viterbi[i, u, v], t_max = max([(
+                    #      viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
+                    #      for t in cls.possible_tags(i - 2)])
+                    score, t_max = max([(
+                         viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
+                         for t in active_tags_t])
+                    viterbi[i, u, v] = score
                     path[i, u, v] = t_max
+                    k_best[u, v] = score
+
+            best = sorted(k_best, key=k_best.get, reverse=True)[:k]
+            # active_tags_t = active_tags_u
+            active_tags_t = [t for (t, u) in best]
+            active_tags_u = [u for (t, u) in best]
+
                     #back_ptr[u, v] = path[t_max, u] + [v]
             # path = back_ptr
 
@@ -282,10 +300,11 @@ class HMMTagger:
         #                         for t in cls._tags for u in cls._tags])
 
         # fixed
-        prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
-                                              for t in cls._tags for u in cls._tags])
-
-        viterbi[n+1, u_max, '</s>'] = prob
+        # prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+        #                                       for t in cls._tags for u in cls._tags])
+        score, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+                                  for t in active_tags_t for u in active_tags_u])
+        viterbi[n+1, u_max, '</s>'] = score
         path[n+1, u_max, '</s>'] = t_max
 
         # print(u_max, v_max, max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
@@ -320,14 +339,14 @@ class HMMTagger:
         # print()
         return tags
 
-    @classmethod
-    def possible_tags(cls, i):
-        if i == -1:
-            return set(['<s>'])
-        if i == 0:
-            return set(['<s>'])
-        else:
-            return cls._tags
+    # @classmethod
+    # def possible_tags(cls, i):
+    #     if i == -1:
+    #         return set(['<s>'])
+    #     if i == 0:
+    #         return set(['<s>'])
+    #     else:
+    #         return cls._tags
 
     @classmethod
     def next_word(cls, sent, i):
@@ -962,7 +981,7 @@ if __name__ == '__main__':
         for i, sent in enumerate(untagged_sents):
             f.write('sentence ' + str(i) + '\n')
             f.write(' '.join(sent) + '\n')
-            tags = tagger.tri_tag(sent)
+            tags = tagger.tri_tag(sent, k=8)
             # print(sent)
             # print(tags)
             for j, (w, t) in enumerate(zip(sent, tags)):
