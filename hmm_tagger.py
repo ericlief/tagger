@@ -271,7 +271,6 @@ class HMMTagger:
 
             # for v in cls.possible_tags(i):
             for v in cls._tags:
-
                 # for u in cls.possible_tags(i - 1):
                 for u in active_tags_u:
 
@@ -905,43 +904,44 @@ if __name__ == '__main__':
     #print(tagger._emissions)
 
     # open unittest test data
-    untagged_sents = []
-    tagged_sents = []
-    n = 0
-    with open('gold-cz.txt', 'r') as f:
-        untagged_sent = []
-        tagged_sent = []
-        first = f.readline().rstrip()           # get first '###'
-        if first != '###/###':
-            f.seek(0)
-        for line in f:
-            # print(line)
-            if line == '\n':
-                continue
-            # word, tag = line.rstrip().split('/')
-            # word = line.rstrip()
-            word, tag = line.rstrip().split('/')
-            if word == '###':
-                untagged_sents.append(untagged_sent)
-                untagged_sent = []
-                tagged_sents.append(tagged_sent)
-                tagged_sent = []
-                continue
-            untagged_sent.append(word)
-            tagged_sent.append((word, tag))
-            n += 1
-
-    # # Use test data
     # untagged_sents = []
-    # tagged_sents = test_data
+    # tagged_sents = []
     # n = 0
-    # for tagged_sent in tagged_sents:
+    # with open('gold-cz.txt', 'r') as f:
     #     untagged_sent = []
-    #     for word, tag in tagged_sent:
+    #     tagged_sent = []
+    #     first = f.readline().rstrip()           # get first '###'
+    #     if first != '###/###':
+    #         f.seek(0)
+    #     for line in f:
+    #         # print(line)
+    #         if line == '\n':
+    #             continue
+    #         # word, tag = line.rstrip().split('/')
+    #         # word = line.rstrip()
+    #         word, tag = line.rstrip().split('/')
+    #         if word == '###':
+    #             untagged_sents.append(untagged_sent)
+    #             untagged_sent = []
+    #             tagged_sents.append(tagged_sent)
+    #             tagged_sent = []
+    #             continue
     #         untagged_sent.append(word)
+    #         tagged_sent.append((word, tag))
     #         n += 1
-    #     untagged_sents.append(untagged_sent)
-    #
+
+
+    # Use test data
+    untagged_sents = []
+    tagged_sents = test_data
+    n = 0
+    for tagged_sent in tagged_sents:
+        untagged_sent = []
+        for word, tag in tagged_sent:
+            untagged_sent.append(word)
+            n += 1
+        untagged_sents.append(untagged_sent)
+
     # print(untagged_sents[0])
     # print(untagged_sents[-1])
     # print(heldout_data[0])
