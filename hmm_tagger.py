@@ -337,11 +337,38 @@ class HMMTagger:
 
             # Inductive step
 
+        # Compute forward (alpha) and backward (beta) probability matrices
         alpha = cls.forward(sent)
-        print(alpha)
-        for t in cls._tags:
-            print(alpha[1, '<s>', t])
+        # print(alpha)
+        beta = cls.backward(sent)
+        #print(beta)
 
+        # for t in cls._tags:
+        #     print(beta[0, '<s>', '<s>'])
+
+        # Collect counts
+        n = len(sent)
+        L = cls._lambdas
+        # increment = {}
+        emission_count = {}
+        transition_count = {}
+        state_count = {}
+        for i in range(1, n+1):
+            w = cls.next_word(sent, i)      # string index starting at zero
+            for t in cls.possible_tags(i-1):
+                for u in cls.possible_tags(i):
+                    for v in cls.possible_tags(i+1):
+
+                        # Calculate fraction count/increment value
+                        increment = alpha[i,t,u] * cls.calculate_interpolated_p(t,u,v,L) \
+                                    * cls._emission_probs[w,v] * beta[i+1,u,v]
+                        emission_count[w,v] += increment
+                        transition_count[u,v] += increment
+                        state_count[u] += increment
+
+        # Reestimate probs
+
+        
     @classmethod
     def train_unsupervised(cls, data):
 
@@ -372,6 +399,8 @@ class HMMTagger:
         # Iterate through sequence of length n
         for i in range(1, n + 1):
 
+            normalization_factor_sum = 0
+
             # Get new word/symbol
             w = cls.next_word(sent, i-1)
             if w not in cls._words:
@@ -381,12 +410,20 @@ class HMMTagger:
             for u in cls.possible_tags(i-1):
                 for v in cls.possible_tags(i):
 
-                    # alpha or forward prob at one node (u, v)
+                    # Alpha or forward prob at one node (u, v)
                     alpha[i, u, v] = sum([alpha[i-1, p, q] * cls.calculate_interpolated_p(q, u, v, L) * cls._emission_probs[w, v]
                                           for p in cls.possible_tags(i-2) for q in cls.possible_tags(i-1)])
                     # Bug??
                     # alpha[i, u, v] = sum([alpha[i - 1, p, q] * cls.calculate_interpolated_p(p, q, v, L) * cls._emission_probs[w, v]
                     #  for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
+
+                    # Update normalization sum
+                    normalization_factor_sum += alpha[i, u, v]
+
+            # Recalculate alphas
+            for u in cls.possible_tags(i - 1):
+                for v in cls.possible_tags(i):
+                    alpha[i, u, v] = alpha[i, u, v] / normalization_factor_sum
 
         # Final step?
         for t in cls.possible_tags(i):
@@ -414,28 +451,33 @@ class HMMTagger:
                          for u in cls._tags])
 
         # Iterate through sequence of length n
-        for i in range(n,):
+        for i in range(n-1, -1, -1):
+
+            normalization_factor_sum = 0
 
             # Get new word/symbol
-            w = cls.next_word(sent, i - 1)
+            w = cls.next_word(sent, i)
             if w not in cls._words:
                 # print('unk word @', i, w)
                 w = '<unk>'
             # Inductive step
-            for u in cls.possible_tags(i - 1):
-                for v in cls.possible_tags(i):
-                    # alpha or forward prob at one node (u, v)
-                    beta[i, u, v] = sum(
-                        [beta[i - 1, p, q] * cls.calculate_interpolated_p(q, u, v, L) * cls._emission_probs[w, v]
-                         for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
-                    # Bug??
-                    # alpha[i, u, v] = sum([alpha[i - 1, p, q] * cls.calculate_interpolated_p(p, q, v, L) * cls._emission_probs[w, v]
-                    #  for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
+            for s in cls.possible_tags(i-1):
+                for t in cls.possible_tags(i):
+                    # Beta or backward prob at one node (u, v)
+                    beta[i, s, t] = sum([beta[i + 1, u, v] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v]
+                                         for u in cls.possible_tags(i) for v in cls.possible_tags(i+1)])
+                    # Update normalization sum
+                    normalization_factor_sum += beta[i, s, t]
 
-        # Final step?
-        for t in cls.possible_tags(i):
-            beta[i + 1, t, '</s>'] = sum([beta[i, s, t] * cls.calculate_interpolated_p(s, t, '</s>', L)
-                                           for s in cls.possible_tags(i)])
+            # Recalculate betas
+            for s in cls.possible_tags(i - 1):
+                for t in cls.possible_tags(i):
+                    beta[i, s, t] = beta[i, s, t] / normalization_factor_sum
+
+        # # Final step?
+        # for t in cls.possible_tags(i):
+        #     beta[i + 1, t, '</s>'] = sum([beta[i, s, t] * cls.calculate_interpolated_p(s, t, '</s>', L)
+        #                                    for s in cls.possible_tags(i)])
 
         return beta
 
