@@ -346,7 +346,7 @@ class HMMTagger:
         # for t in cls._tags:
         #     print(beta[0, '<s>', '<s>'])
 
-        # Collect counts
+        # Collect counts (E-Step)
         n = len(sent)
         L = cls._lambdas
         # increment = {}
@@ -366,7 +366,8 @@ class HMMTagger:
                         transition_count[u,v] += increment
                         state_count[u] += increment
 
-        # Reestimate probs
+        # Reestimate probs (M-Step)
+
 
         
     @classmethod
@@ -854,6 +855,7 @@ class HMMTagger:
         cls._bi_tag_probs = defaultdict(lambda: 0.0)
         cls._uni_tag_probs = defaultdict(lambda: 0.0)
         cls._tri_tag_logprob = defaultdict(lambda: 0.0)
+        cls._smoothed_tag_probs = defaultdict(lambda: 0.0)
 
         for t, u, v in cls._tri_transition_counts:
             # print(t, u, v, cnt)
@@ -881,6 +883,7 @@ class HMMTagger:
         # Smooth tag model
         if heldout_data:
             cls._lambdas = cls.smooth_tag_model(heldout_data)
+
 
         # # Recalculate smoothed interpolated trigram prob
         # cls._interpolated_tag_probs = defaultdict(lambda: 0.0)
