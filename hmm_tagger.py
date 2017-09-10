@@ -349,27 +349,46 @@ class HMMTagger:
         # Collect counts (E-Step)
         n = len(sent)
         L = cls._lambdas
-        # increment = {}
-        emission_count = {}
-        transition_count = {}
-        state_count = {}
+        emission_counts = {}
+        uni_transition_counts = {}
+        bi_transition_counts = {}
+        tri_transition_counts = {}
+        tri_transition_probs = {}
+        emission_probs = {}
+
         for i in range(1, n+1):
-            w = cls.next_word(sent, i)      # string index starting at zero
+            w = cls.next_word(sent, i)      # string index starting at zero, so really is i+1
             for t in cls.possible_tags(i-1):
                 for u in cls.possible_tags(i):
                     for v in cls.possible_tags(i+1):
 
                         # Calculate fraction count/increment value
-                        increment = alpha[i,t,u] * cls.calculate_interpolated_p(t,u,v,L) \
-                                    * cls._emission_probs[w,v] * beta[i+1,u,v]
-                        emission_count[w,v] += increment
-                        transition_count[u,v] += increment
-                        state_count[u] += increment
+
+                        # Use smoothed params obtained from first 10k of training data
+                        if i == 1:
+                            increment = alpha[i, t, u] * cls.calculate_interpolated_p(t, u, v, L) \
+                                        * cls._emission_probs[w, v] * beta[i+1, u, v]
+
+                        # For remaining iterations recalculate increments from past probabilities
+                        else:
+                            increment = alpha[i, t, u] * tri_transition_probs(t, u, v) \
+                                        * emission_probs[w, v] * beta[i + 1, u, v]
+
+                        emission_counts[w, v] += increment
+                        uni_transition_counts[t] += increment             # unigram tag transition count
+                        bi_transition_counts[t, u] += increment           # bigram tag transition count
+                        tri_transition_counts[t, u, v] += increment       # trigram tag transition count
+
+                        # state_count[u] += increment
 
         # Reestimate probs (M-Step)
 
+        for (t, u, v), c in tri_transition_counts.items():
+            tri_transition_probs[t, u, v] = c / bi_transition_counts[t, u]
 
-        
+        for (word, tag), c in emission_counts.items():
+            emission_probs[word, tag] = c / uni_transition_counts[tag]
+
     @classmethod
     def train_unsupervised(cls, data):
 
