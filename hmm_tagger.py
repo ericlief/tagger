@@ -923,7 +923,7 @@ class HMMTagger:
         #     cls._interpolated_tag_probs[t, u, v] = cls.calculate_interpolated_p(t, u, v, cls._lambdas)
 
 
-def write_results(model, gold):
+def write_results(model, gold, params):
 
     # Strip tags
     gold_untagged_sents = []
@@ -937,7 +937,7 @@ def write_results(model, gold):
         gold_untagged_sents.append(untagged_sent)
 
     # **Tag text and calculate and write accuracy**
-    with open('results.txt', 'w') as f:
+    with open('results-cz.txt', 'a') as f:
         correct = 0
         for i, sent in enumerate(gold_untagged_sents):
             # f.write('sentence ' + str(i) + '\n')
@@ -955,6 +955,7 @@ def write_results(model, gold):
         # print(correct)
         # print(n)
         acc = correct / n
+        f.write(params + '\n')
         f.write('Accuracy = ' + str(acc) + '\n')
 
 if __name__ == '__main__':
@@ -1057,17 +1058,21 @@ if __name__ == '__main__':
     # ***Smooth params/Heldout***
     # NB: Uncomment for Viterbi (not BW)
 
+    params = 'heldout_data = None, mode = None'
     tagger.initialize_params(heldout_data=None, mode=None)
-    write_results(tagger, test_data)
+    write_results(tagger, test_data, params)
 
     tagger.initialize_params(heldout_data=None, mode='unk_threshold')
-    write_results(tagger, test_data)
+    params = "heldout_data = None, mode = 'unk_threshold'"
+    write_results(tagger, test_data, params)
 
+    params = "heldout_data, mode = 'unk_threshold'"
     tagger.initialize_params(heldout_data, mode='unk_threshold')
-    write_results(tagger, test_data)
+    write_results(tagger, test_data, params)
 
+    params = "heldout_data, mode = 'unk_heldout'"
     tagger.initialize_params(heldout_data, mode='unk_heldout')
-    write_results(tagger, test_data)
+    write_results(tagger, test_data, params)
 
     # print(tagger._lambdas)
     # print(tagger._emissions)
