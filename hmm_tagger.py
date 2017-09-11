@@ -28,7 +28,7 @@ class HMMTagger:
         # self._trainModel = LanguageModel(train)         # training model
         # self._testModel = LanguageModel(test)           # test model
         # self._heldoutModel = LanguageModel(heldout.txt)     # heldout.txt model used for smoothing params
-        self._lambdas = [0, 0, 0, 0]                    # smoothing params (lambdas)
+        self._lambdas = None                    # smoothing params (lambdas)
 
     # @classmethod
     # def train(cls, train_data):
@@ -279,9 +279,15 @@ class HMMTagger:
                     # viterbi[i, u, v], t_max = max([(
                     #      viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
                     #      for t in cls.possible_tags(i - 2)])
-                    score, t_max = max([(
+                    if L:
+                        score, t_max = max([(
                          viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
                          for t in active_tags_t])
+                    else:   # no EM smoothing of tag parameters, employ tri-tag model probs
+                        score, t_max = max([(
+                            viterbi[i - 1, t, u] * cls._tri_tag_probs[t, u, v] * cls._emission_probs[w, v], t)
+                            for t in active_tags_t])
+
                     viterbi[i, u, v] = score
                     path[i, u, v] = t_max
                     k_best[u, v] = score
@@ -303,8 +309,12 @@ class HMMTagger:
         # fixed
         # prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                                       for t in cls._tags for u in cls._tags])
-        score, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
+        if L:
+            score, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
                                   for t in active_tags_t for u in active_tags_u])
+        else:
+            score, t_max, u_max = max([(viterbi[n, t, u] * cls._tri_tag_probs[t, u, '</s>'], t, u)
+                                       for t in active_tags_t for u in active_tags_u])
         viterbi[n+1, u_max, '</s>'] = score
         path[n+1, u_max, '</s>'] = t_max
 
@@ -889,7 +899,7 @@ class HMMTagger:
         if mode == 'unk_heldout':
             cls._emission_probs = cls.smooth_unknown_words_from_heldout(heldout_data)
         elif mode == 'unk_threshold':
-            cls._emission_probs = cls.smooth_unkown_words_with_threshold()
+            cls._emission_probs = cls.smooth_unkown_words_with_threshold(threshold=7)
         elif mode is None:
             cls._emission_probs = defaultdict(lambda : 0.0)
             # Calculate emission probabilities
@@ -902,34 +912,50 @@ class HMMTagger:
         # Smooth tag model
         if heldout_data:
             cls._lambdas = cls.smooth_tag_model(heldout_data)
+        else:
+            cls._lambdas = None
+        # cls._lambdas = None
 
-
-        # # Recalculate smoothed interpolated trigram prob
+            # # Recalculate smoothed interpolated trigram prob
         # cls._interpolated_tag_probs = defaultdict(lambda: 0.0)
         # for t, u, v in cls._tri_tag_probs:
         #     # print(t, u, v, cnt)
         #     cls._interpolated_tag_probs[t, u, v] = cls.calculate_interpolated_p(t, u, v, cls._lambdas)
 
-    def crossEntropy(self, L):
-        """
-        Compute the cross entropy H or negative
-        log likelihood of test data using
-        the new smoothed language model.
 
-        :param L: lambdas
-        :return: H
-        """
+def write_results(model, gold):
 
-        # Iterate through trigrams in model
-        H = 0  # cross entropy
-        for (w1, w2, w3), cnt in self._testModel.trigrams.items():
-            # log likelihood/cross-entropy
-            H += cnt * np.log2(self._p_(w1, w2, w3, L))  # this is p' (model), multiplied by the count of the trigrams
+    # Strip tags
+    gold_untagged_sents = []
+    gold_tagged_sents = gold
+    n = 0
+    for tagged_sent in gold_tagged_sents:
+        untagged_sent = []
+        for word, tag in tagged_sent:
+            untagged_sent.append(word)
+            n += 1
+        gold_untagged_sents.append(untagged_sent)
 
-        H *= -1.0 / self._testModel.T  # per word cross entropy/negative log likelihood
-        return H
-
-
+    # **Tag text and calculate and write accuracy**
+    with open('results.txt', 'w') as f:
+        correct = 0
+        for i, sent in enumerate(gold_untagged_sents):
+            # f.write('sentence ' + str(i) + '\n')
+            # f.write(' '.join(sent) + '\n')
+            tags = tagger.tri_tag(sent, k=8)
+            # print(sent)
+            # print(tags)
+            for j, (w, t) in enumerate(zip(sent, tags)):
+                # f.write(str(w) + '/' + str(t) + '\n')
+                if gold_tagged_sents[i][j] == (w, t):
+                    # f.write('correct' + str(gold_tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
+                    correct += 1
+                # else:
+                    # f.write('incorrect' + str(gold_tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
+        # print(correct)
+        # print(n)
+        acc = correct / n
+        f.write('Accuracy = ' + str(acc) + '\n')
 
 if __name__ == '__main__':
 
@@ -944,154 +970,113 @@ if __name__ == '__main__':
             words.append(word)
             tags.append(tag)
 
-    # print(tags)
-    # Split data for initial part
-    # T-H-V
-    # rest-20-* cls._emission_probs[w, t]40
 
-    # print('initial split')
+    # Get test data for parts I and II, the last 40k
 
-    # Get test data, the last 40k
+    # With segmentation of sentences
+
     test_data = []
     sent = []
     pos1 = -40000
-    # pos1 = -20
     while words[pos1] != '###':
         pos1 += 1
-    pos1 += 1    # skip first '#'
+    pos1 += 1  # skip first '#'
     for word, tag in zip(words[pos1:], tags[pos1:]):
         if word == '###':
-            test_data.append(sent)
+            if sent:
+                test_data.append(sent)
             sent = []
             continue
         sent.append((word, tag))
-    #print(test_data)
-    #
-    # test_data = [test_data]     # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
 
-    # Get heldout.txt data, the mid 20k (not used in brill).
+    # Get heldout data, the mid 20k (not used in brill).
     heldout_data = []
     sent = []
-    pos2 = -60000
-    # pos2 = -40
-    try:
-        while words[pos2] != '###':
-            pos2 += 1
-    except IndexError:
-        print(sys.stderr)
-    pos2 += 1    # skip first '#'
-    for word, tag in zip(words[pos2:pos1-1], tags[pos2:pos1-1]):
+    # pos2 = -60000
+    pos2 = pos1
+    pos1 = -60000
+    while words[pos1] != '###':
+        pos1 += 1
+    pos1 += 1  # skip first '#'
+    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
+        # for word, tag in zip(words[pos2:pos1 - 1], tags[pos2:pos1 - 1]):
         if word == '###':
-            heldout_data.append(sent)
+            if sent:
+                heldout_data.append(sent)
             sent = []
             continue
-        sent.append((word, tag))    # heldout_data = [heldout_data]
+        sent.append((word, tag))
 
-    # print(heldout_data)
-    #
-    # # Get train data, the first ~20k
-    # for word, tag in zip(words[:-60000], tags[:-60000]):
-    #     train_data.append((word, tag))
-    # train_data = [train_data]     # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
-
-    # Task #2 **Train BW**
-
-    # Get initial train data, the first ~10k
+    # Get initial train data, the first ~20k
     train_data = []
     sent = []
-    pos3 = 10000
-    # pos3 = 40
-    try:
-        while words[pos3] != '###':
-            pos3 += 1
-    except IndexError:
-        print(sys.stderr)
-    pos3 += 1  # this is the final sentence in set
-    for word, tag in zip(words[:pos3], tags[:pos3]):
-        if word == '###':
-            train_data.append(sent)
-            sent = []
-            continue
-        sent.append((word, tag))    # heldout_data = [heldout_data]
-
-    # Train init params for BW
-    tagger = HMMTagger.train(train_data)
-    # tagger.initialize_params(heldout_data=None, mode=None)
-    tagger.initialize_params(heldout_data, mode='unk_heldout')
-    tagger.smooth_tag_model(heldout_data)
-
-    # print(tagger._tri_tag_probs)
-
-    # Task #2. For remaining words in train data, strip tags
-    data = []
-    sent = []
-    pos1 = pos3 + 1     # index = ~10000
-    pos2 = 40000
-    try:
-        while words[pos1] != '###':
-            pos1 += 1
-        # while words[pos2] != '###':
-        #     pos2 += 1
-    except IndexError:
-        print(sys.stderr)
+    pos2 = pos1
+    pos1 = 0
+    while words[pos1] != '###':
+        pos1 += 1
     pos1 += 1  # this is the first sentence in set
-    pos2 += 1  # this is the final sentence in set
-
-    for word in words[pos1:pos2]:
+    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
         if word == '###':
-            data.append(sent)
+            if sent:
+                train_data.append(sent)
             sent = []
             continue
-        sent.append(word)    # heldout_data = [heldout_data]
-
-    print(data)
-
-    # Train params using BW
-    print(tagger._emission_probs)
-    print(tagger._lambdas)
+        sent.append((word, tag))  # heldout_data = [heldout_data]
 
 
-    tagger.train_unsupervised(data)
-
+    # # Without segmentation of sentences
+    #
+    # # Get test data, the last 40k
+    # test_data = []
+    # for word, tag in zip(words[-40000:], tags[-40000:]):
+    #     test_data.append((word, tag))
+    # test_data = [
+    #     test_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+    #
+    # # Get heldout data, the mid 20k (not used in brill).
+    # # Not used for this part, and just for show (not computed below)
+    # heldout_data = []
+    # for word, tag in zip(words[-60000:-40000], tags[-60000:-40000]):
+    #     heldout_data.append((word, tag))
+    # heldout_data = [heldout_data]
+    #
+    # # Get training data, the first ~20k
+    # train_data = []
+    # for word, tag in zip(words[:-60000], tags[:-60000]):
+    #     train_data.append((word, tag))
+    # train_data = [
+    #     train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
 
 
 
     # Task #1 **Train Viterbi**
-    # # Get train data, the first ~40k
-    # train_data = []
-    # sent = []
-    # pos3 = 40000
-    # # pos3 = 40
-    # try:
-    #     while words[pos3] != '###':
-    #         pos3 += 1
-    # except IndexError:
-    #     print(sys.stderr)
-    # dont think need this??? pos3 += 1  # this is the final sentence in set
-    # for word, tag in zip(words[:pos3], tags[:pos3]):
-    #     if word == '###':
-    #         train_data.append(sent)
-    #         sent = []
-    #         continue
-    #     sent.append((word, tag))  # heldout_data = [heldout_data]
 
-            # for word, tag in zip(words[:10000], tags[:10000]):
-    #     train_data.append((word, tag))
-    # train_data = [train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+    # Init and Train model
+    tagger = HMMTagger.train(train_data)
+
+    # ***Smooth params/Heldout***
+    # NB: Uncomment for Viterbi (not BW)
+
+    tagger.initialize_params(heldout_data=None, mode=None)
+    write_results(tagger, test_data)
+
+    tagger.initialize_params(heldout_data=None, mode='unk_threshold')
+    write_results(tagger, test_data)
+
+    tagger.initialize_params(heldout_data, mode='unk_threshold')
+    write_results(tagger, test_data)
+
+    tagger.initialize_params(heldout_data, mode='unk_heldout')
+    write_results(tagger, test_data)
+
+    # print(tagger._lambdas)
+    # print(tagger._emissions)
 
 
-    # tagger._tri_tag_probs
-    # tagger._emission_probs
 
-    # print(tagger._tri_transitions)
-    # print(tagger._bi_transitions)
 
-    # n = sum(tagger._emissions.values())
-    # v = len(tagger._uni_words)
-    # print('n=', n, '\tv=', v)
-    # print(tagger._uni_words)
 
-    # For test
+        # For test
     # heldout_data = []
     # with open('heldout.txt', 'r') as f:
     #     sent = []
@@ -1110,10 +1095,10 @@ if __name__ == '__main__':
     #         sent.append(word)
     #
     #
-        # heldout_data.append(sent)
-        #         sent = []
-        #         continue
-        #     sent.append((word, tag))    # heldout_data = [heldout_data]
+    # heldout_data.append(sent)
+    #         sent = []
+    #         continue
+    #     sent.append((word, tag))    # heldout_data = [heldout_data]
     # heldout_data = [heldout_data]
     # print(heldout_data[:5])
     #     if word == '###':
@@ -1127,21 +1112,10 @@ if __name__ == '__main__':
     # L = tagger.smooth_tag_model(heldout_data)
 
 
-    # Init and Train model
-    # tagger = HMMTagger.train(train_data)
 
-    # ***Smooth params/Heldout***
-    # NB: Uncomment for Viterbi (not BW)
-    # tagger.initialize_params(heldout_data, mode='unk_threshold')
-    # tagger.initialize_params(heldout_data, mode='unk_heldout')
-    # tagger.initialize_params(heldout_data)
-    # print(tagger._lambdas)
 
-    # print(tagger._emissions)
+    # Unit test, uncomment if needed
 
-    # tagger = HMMTagger.train(test_data)
-
-    # Unit test
     # print(list(tagger._tri_transitions.items())[:5])
     # print(tagger._tri_transitions[('NN', 'DT', 'VBZ')])
     # print(tagger._tri_transitions[('IN', 'DT', 'NN')])
@@ -1157,7 +1131,7 @@ if __name__ == '__main__':
     # print(list(tagger._uni_transitions.items())[:5])
     # print(tagger._tags)
     # print(tagger._words)
-    #print(tagger._emissions)
+    # print(tagger._emissions)
 
     # open unittest test data
     # untagged_sents = []
@@ -1187,18 +1161,7 @@ if __name__ == '__main__':
     #         n += 1
 
 
-    # # **TEST**
-    #
-    # #  Use test data
-    # untagged_sents = []
-    # tagged_sents = test_data
-    # n = 0
-    # for tagged_sent in tagged_sents:
-    #     untagged_sent = []
-    #     for word, tag in tagged_sent:
-    #         untagged_sent.append(word)
-    #         n += 1
-    #     untagged_sents.append(untagged_sent)
+
 
 
 
@@ -1237,11 +1200,11 @@ if __name__ == '__main__':
     # print(tagged_sents)
 
 
-
+    #
     # # **Tag text and calculate and write accuracy**
     # with open('tagged.txt', 'w') as f:
     #     correct = 0
-    #     for i, sent in enumerate(untagged_sents):
+    #     for i, sent in enumerate(gold_untagged_sents):
     #         f.write('sentence ' + str(i) + '\n')
     #         f.write(' '.join(sent) + '\n')
     #         tags = tagger.tri_tag(sent, k=8)
@@ -1249,11 +1212,11 @@ if __name__ == '__main__':
     #         # print(tags)
     #         for j, (w, t) in enumerate(zip(sent, tags)):
     #             f.write(str(w) + '/' + str(t) + '\n')
-    #             if tagged_sents[i][j] == (w, t):
-    #                 f.write('correct' + str(tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
+    #             if gold_tagged_sents[i][j] == (w, t):
+    #                 f.write('correct' + str(gold_tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
     #                 correct += 1
     #             else:
-    #                 f.write('incorrect' + str(tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
+    #                 f.write('incorrect' + str(gold_tagged_sents[i][j]) + '\t' + str((w, t)) + '\n')
     #     # print(correct)
     #     # print(n)
     #     acc = correct / n
@@ -1263,216 +1226,52 @@ if __name__ == '__main__':
     #         # for x in tagger._path.items():
     #         #     f.write('path')
     #         #     f.write(str(x) + '\n')
-    #
+
 
     # print(train_data[:5])
     # print(heldout_data)
     # print(tagger._bi_transition_counts['.', '</s>'])
 
 
+    # # Train init params for BW
+    # tagger = HMMTagger.train(train_data)
+    # tagger.initialize_params(heldout_data=None, mode=None)
+    # # tagger.initialize_params(heldout_data, mode='unk_heldout')
+    #
+    # print(tagger._tri_tag_probs)
+
+    # # Task #2. For remaining words in train data, strip tags
+    # data = []
+    # sent = []
+    # pos1 = pos3 + 1     # index = ~10000
+    # pos2 = 40000
+    # try:
+    #     while words[pos1] != '###':
+    #         pos1 += 1
+    #     # while words[pos2] != '###':
+    #     #     pos2 += 1
+    # except IndexError:
+    #     print(sys.stderr)
+    # pos1 += 1  # this is the first sentence in set
+    # pos2 += 1  # this is the final sentence in set
+    #
+    # for word in words[pos1:pos2]:
+    #     if word == '###':
+    #         data.append(sent)
+    #         sent = []
+    #         continue
+    #     sent.append(word)    # heldout_data = [heldout_data]
+    #
+    # print(data)
+    #
+    # # Train params using BW
+    # print(tagger._emission_probs)
+    # print(tagger._lambdas)
+    #
+    #
+    # tagger.train_unsupervised(data)
 
 
-        # viterbi[n, u, '</s>'], t_max, u_max = max(
-        #     [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
-        #
-        # # path[n, '</s>'] = path[n, u_max] + [u_max]
-        # path[n, u_max, '</s>'] = t_max
-        # return HMMTagger.backtrace(path, n, u_max)  # @classmethod
 
 
-            # print(viterbi[1, '<s>', u], viterbi[2, u, v])
-            #
-            # print('init PRP', viterbi[1, '<s>', 'PRP'])
-            # print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
-            # print('emission', cls._emission_probs['I', 'PRP'])
-            # print(cls._emission_counts['I', 'PRP'])
-            # print(cls._uni_transition_counts['PRP'])
-            # print('init PRP', viterbi[2, 'PRP', 'VB'])
-            # print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
-            # print('emission', cls._emission_probs['like', 'VB'])
-            # print(cls._emission_counts['like', 'VB'])
-            # print(cls._uni_transition_counts['VB'])
-            # print(viterbi[2, '``', 'PRP'])
-            # print(path[2, '``', 'PRP'])
-            # print(cls._tags)
-
-
-    # def tri_tag2(cls, sent):
-    #
-    #     print(sent)
-    #
-    #     # words = [w for sent in corpus for w in sent]
-    #     # print(words)
-    #     n = len(sent)
-    #     L = cls._lambdas
-    #     viterbi = {}
-    #     path = {}
-    #
-    #     # Initialization step
-    #     w1 = sent[0]
-    #     w2 = sent[1]
-    #     stop = 0
-    #
-    #     for t in cls._tags:
-    #
-    #         viterbi[1, '<s>', t] = cls.calculate_interpolated_p('<s>', '<s>', t, L) * cls._emission_probs[w1, t]
-    #
-    #         path[1, '<s>', t] = ''
-    #
-    #     res = []
-    #     for v in cls._tags:
-    #         for u in cls._tags:
-    #             # print(stop, u, v)
-    #             viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
-    #             v)
-    #
-    #             viterbi[2, u, v], t_max = max(
-    #                 [(viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v],
-    #                   v)
-    #                  for v in cls._tags])
-    #
-    #             # print(w, u, v)
-    #             # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
-    #             # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #             # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #             # viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
-    #             #
-    #             # path[1, '<s>', u] = ''
-    #             #
-    #             # # path[t] = []
-    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
-    #             #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
-    #             # viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
-    #             # path[2, u, v] = ''
-    #             #
-    #             #
-    #             # print('u_max=', t_max)
-    #             # path[i, v] = path[i-1, u_max] + [u_max]
-    #
-    #
-    #             path[i, u, v] = t_max
-    #
-    #
-    #
-    #             print(viterbi[1,'<s>',u], viterbi[2,u,v])
-    #
-    #             stop += 1
-    #
-    #     # for v in cls._tags:
-    #     #
-    #     #     for u in cls._tags:
-    #     #         print(stop, u, v)
-    #     #
-    #     #
-    #     #
-    #     #         # print(w, u, v)
-    #     #         # viterbi[1, t] = cls._bi_transitions['<s>', t] * float(cls._emissions[word, t]/cls._uni_transitions[t])
-    #     #         # viterbi[1, '<s>', u] = cls._tri_transitions['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #     #         # viterbi[1, '<s>', u] = cls._tri_tag_probs['<s>', '<s>', u] * cls.emission_prob(w, u)
-    #     #         viterbi[1, '<s>', u] = cls.calculate_interpolated_p('<s>', '<s>', u, L) * cls._emission_probs[w1, u]
-    #     #
-    #     #         path[1, '<s>', u] = ''
-    #     #
-    #     #         # path[t] = []
-    #     #         # viterbi[2, u, v] = viterbi[1, '<s>', u] * \
-    #     #         #                    float(cls._tri_transitions['<s>', u, v]/cls._bi_transitions['<s>', u]) * cls.emission_prob(w, v)
-    #     #         viterbi[2, u, v] = viterbi[1, '<s>', u] * cls.calculate_interpolated_p('<s>', u, v, L) * cls._emission_probs[w2, v]
-    #     #         path[2, u, v] = ''
-    #     #
-    #     #         print(viterbi[1,'<s>',u], viterbi[2,u,v])
-    #     #
-    #     #         stop += 1
-    #     #
-    #     #     # if u == 'PRP':
-    #     #     #     break
-    #
-    #
-    #     print('init PRP', viterbi[1,'<s>','PRP'])
-    #     print('interp', cls.calculate_interpolated_p('<s>', '<s>', 'PRP', L))
-    #     print('emission', cls._emission_probs['I', 'PRP'])
-    #     print(cls._emission_counts['I', 'PRP'])
-    #     print(cls._uni_transition_counts['PRP'])
-    #     print('init PRP', viterbi[2, 'PRP', 'VB'])
-    #     print('interp', cls.calculate_interpolated_p('<s>', 'PRP', 'VB', L))
-    #     print('emission', cls._emission_probs['like', 'VB'])
-    #     print(cls._emission_counts['like', 'VB'])
-    #     print(cls._uni_transition_counts['VB'])
-    #     print(viterbi[2, '``', 'PRP'])
-    #     print(path[2, '``', 'PRP'])
-    #     print(cls._tags)
-    #
-    #     # print(viterbi))
-    #     # Recursion step
-    #     for i in range(3, n + 1):
-    #         # temp_path = {}
-    #
-    #         w = sent[i - 1]
-    #         if w not in cls._words:
-    #             # print('unk word @', i, w)
-    #             w = '<unk>'
-    #
-    #             # for i, w in enumerate(words):
-    #             #     if i == 0:
-    #             # t = '<s>'
-    #             # u = '<s>'
-    #             #
-    #         # for t in cls._tags:
-    #         #     for u in cls._tags:
-    #         #         if t == '<s>' and u == '<s>':
-    #         #             pass
-    #
-    #         for v in cls._tags:
-    #             # print('VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV', v, w)
-    #             # j = 0
-    #             for u in cls._tags:
-    #             #     # if j > 5:
-    #             #     #     break
-    #             #     # print(u, viterbi[i-1, u] * float(cls._bi_transitions[u, v]/cls._uni_transitions[u])
-    #             #     #                            * float(cls._emissions[w, v]/cls._uni_transitions[v]))
-    #             #     print(w, u, v, viterbi[i - 1, u] * float(cls._bi_transitions[u, v] / cls._uni_transitions[u])
-    #             #           * cls.emission_prob(w, v))
-    #             #     # j+=1
-    #             #
-    #             #     # print('v=', v)
-    #             #     viterbi[i, u, v], t_max = max(
-    #             #         [(viterbi[i - 1, t, u] * float(cls._tri_transitions[t, u, v] / cls._bi_transitions[t, u])
-    #             #           * cls.emission_prob(w, v), t) for t in cls._tags])
-    #                 viterbi[i, u, v], t_max = max(
-    #                     [(viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
-    #                      for t in cls._tags])
-    #
-    #
-    #             # print('u_max=', t_max)
-    #                 # path[i, v] = path[i-1, u_max] + [u_max]
-    #                 path[i, u, v] = t_max
-    #             # print('path', path[i,v])
-    #
-    #             # temp_path[v] = path[u_max] + [v]
-    #
-    #             # if u_max == '``':
-    #             #     print('empty string')
-    #
-    #             # path = temp_path
-    #
-    #     # Final step, to sentence
-    #     # viterbi[n, u, '</s>'], t_max, u_max = max(
-    #     #     [(viterbi[n, t, u] * float(cls._tri_transitions[t, u, '</s>'] / cls._bi_transitions[t, u]), t, u)
-    #     #      for t in cls._tags for u in cls._tags])
-    #     viterbi[n, u, '</s>'], t_max, u_max = max(
-    #         [(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u) for t in cls._tags for u in cls._tags])
-    #
-    #     # path[n, '</s>'] = path[n, u_max] + [u_max]
-    #     path[n, u_max, '</s>'] = t_max
-    #
-    #     # print(cls._tags)
-    #
-    #
-    #     for i in range(2,3):
-    #         for u in cls._tags:
-    #             for v in cls._tags:
-    #
-    #                 print(i,u,v, repr(viterbi[i, u,v]))
-    #
-    #     # print(cls._emissions)
-    #     return HMMTagger.backtrace(path, n, u_max)
 
