@@ -940,7 +940,7 @@ def write_results(model, gold, params):
         gold_untagged_sents.append(untagged_sent)
 
     # **Tag text and calculate and write accuracy**
-    with open('results-cz_unseg.txt', 'a') as f:
+    with open('results2-cz_unseg.txt', 'a') as f:
         correct = 0
         for i, sent in enumerate(gold_untagged_sents):
             # f.write('sentence ' + str(i) + '\n')
@@ -977,79 +977,79 @@ if __name__ == '__main__':
 
     # Get test data for parts I and II, the last 40k
 
-    # With segmentation of sentences
-
-    test_data = []
-    sent = []
-    pos1 = -40000
-    while words[pos1] != '###':
-        pos1 += 1
-    pos1 += 1  # skip first '#'
-    for word, tag in zip(words[pos1:], tags[pos1:]):
-        if word == '###':
-            if sent:
-                test_data.append(sent)
-            sent = []
-            continue
-        sent.append((word, tag))
-
-    # Get heldout data, the mid 20k (not used in brill).
-    heldout_data = []
-    sent = []
-    # pos2 = -60000
-    pos2 = pos1
-    pos1 = -60000
-    while words[pos1] != '###':
-        pos1 += 1
-    pos1 += 1  # skip first '#'
-    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
-        # for word, tag in zip(words[pos2:pos1 - 1], tags[pos2:pos1 - 1]):
-        if word == '###':
-            if sent:
-                heldout_data.append(sent)
-            sent = []
-            continue
-        sent.append((word, tag))
-
-    # Get initial train data, the first ~20k
-    train_data = []
-    sent = []
-    pos2 = pos1
-    pos1 = 0
-    while words[pos1] != '###':
-        pos1 += 1
-    pos1 += 1  # this is the first sentence in set
-    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
-        if word == '###':
-            if sent:
-                train_data.append(sent)
-            sent = []
-            continue
-        sent.append((word, tag))  # heldout_data = [heldout_data]
-
+    # # With segmentation of sentences
     #
-    # # Without segmentation of sentences
-    #
-    # # Get test data, the last 40k
     # test_data = []
-    # for word, tag in zip(words[-40000:], tags[-40000:]):
-    #     test_data.append((word, tag))
-    # test_data = [
-    #     test_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+    # sent = []
+    # pos1 = -40000
+    # while words[pos1] != '###':
+    #     pos1 += 1
+    # pos1 += 1  # skip first '#'
+    # for word, tag in zip(words[pos1:], tags[pos1:]):
+    #     if word == '###':
+    #         if sent:
+    #             test_data.append(sent)
+    #         sent = []
+    #         continue
+    #     sent.append((word, tag))
     #
     # # Get heldout data, the mid 20k (not used in brill).
-    # # Not used for this part, and just for show (not computed below)
     # heldout_data = []
-    # for word, tag in zip(words[-60000:-40000], tags[-60000:-40000]):
-    #     heldout_data.append((word, tag))
-    # heldout_data = [heldout_data]
+    # sent = []
+    # # pos2 = -60000
+    # pos2 = pos1
+    # pos1 = -60000
+    # while words[pos1] != '###':
+    #     pos1 += 1
+    # pos1 += 1  # skip first '#'
+    # for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
+    #     # for word, tag in zip(words[pos2:pos1 - 1], tags[pos2:pos1 - 1]):
+    #     if word == '###':
+    #         if sent:
+    #             heldout_data.append(sent)
+    #         sent = []
+    #         continue
+    #     sent.append((word, tag))
     #
-    # # Get training data, the first ~20k
+    # # Get initial train data, the first ~20k
     # train_data = []
-    # for word, tag in zip(words[:-60000], tags[:-60000]):
-    #     train_data.append((word, tag))
-    # train_data = [
-    #     train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+    # sent = []
+    # pos2 = pos1
+    # pos1 = 0
+    # while words[pos1] != '###':
+    #     pos1 += 1
+    # pos1 += 1  # this is the first sentence in set
+    # for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
+    #     if word == '###':
+    #         if sent:
+    #             train_data.append(sent)
+    #         sent = []
+    #         continue
+    #     sent.append((word, tag))  # heldout_data = [heldout_data]
+
+    #
+    # Without segmentation of sentences
+
+    # Get test data, the last 40k
+    test_data = []
+    for word, tag in zip(words[-40000:], tags[-40000:]):
+        test_data.append((word, tag))
+    test_data = [
+        test_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+
+    # Get heldout data, the mid 20k (not used in brill).
+    # Not used for this part, and just for show (not computed below)
+    heldout_data = []
+    for word, tag in zip(words[-60000:-40000], tags[-60000:-40000]):
+        heldout_data.append((word, tag))
+    heldout_data = [heldout_data]
+
+    # Get training data, the first ~20k
+    train_data = []
+    for word, tag in zip(words[:-60000], tags[:-60000]):
+        train_data.append((word, tag))
+    train_data = [
+        train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
 
 
     # Task #1 **Train Viterbi**
