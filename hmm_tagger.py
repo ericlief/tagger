@@ -356,42 +356,48 @@ class HMMTagger:
         # for t in cls._tags:
         #     print(beta[0, '<s>', '<s>'])
 
-        # Collect counts (E-Step)
-        n = len(sent)
-        L = cls._lambdas
-        emission_counts = {}
-        uni_transition_counts = {}
-        bi_transition_counts = {}
-        tri_transition_counts = {}
-        tri_transition_probs = {}
-        emission_probs = {}
 
-        for i in range(1, n+1):
-            w = cls.next_word(sent, i)      # string index starting at zero, so really is i+1
+        # Collect counts (E-Step)
+        m = len(sent)   # number of output symbols (local)
+        cls._n += m      # to count number of total (global) tags/states
+        L = cls._lambdas
+        # emission_counts = {}
+        # uni_transition_counts = {}
+        # bi_transition_counts = {}
+        # tri_transition_counts = {}
+        # tri_transition_probs = {}
+        # emission_probs = {}
+
+        for i in range(0, m-1):
+        # for i in range(1, m + 1): bug??
+
+            w = cls.next_word(sent, i+1)      # string index starting at zero, so really is i+1, changed from i
             for t in cls.possible_tags(i-1):
                 for u in cls.possible_tags(i):
                     for v in cls.possible_tags(i+1):
 
                         # Calculate fraction count/increment value
 
-                        # Use smoothed params obtained from first 10k of training data
+                        # Use smoothed params obtained from first 10k of training data????
                         if iter == 1:
                             increment = alpha[i, t, u] * cls.calculate_interpolated_p(t, u, v, L) \
                                         * cls._emission_probs[w, v] * beta[i+1, u, v]
 
-                        # For remaining iterations recalculate increments from past probabilities
+                        # For remaining iterations recalculate increments from past probabilities????
                         else:
-                            increment = alpha[i, t, u] * tri_transition_probs(t, u, v) \
-                                        * emission_probs[w, v] * beta[i + 1, u, v]
+                            increment = alpha[i, t, u] * cls._tri_transition_probs(t, u, v) \
+                                        * cls._emission_probs[w, v] * beta[i + 1, u, v]
 
-                        emission_counts[w, v] += increment
-                        uni_transition_counts[t] += increment             # unigram tag transition count
-                        bi_transition_counts[t, u] += increment           # bigram tag transition count
-                        tri_transition_counts[t, u, v] += increment       # trigram tag transition count
+                        cls._emission_counts[w, v] += increment
+                        cls._uni_transition_counts[t] += increment             # unigram tag transition count
+                        cls._bi_transition_counts[t, u] += increment           # bigram tag transition count
+                        cls._tri_transition_counts[t, u, v] += increment       # trigram tag transition count
 
                         # state_count[u] += increment
 
 
+
+        # return emission_counts
 
 
         # # Reestimate probs (M-Step)
@@ -403,18 +409,56 @@ class HMMTagger:
         #     emission_probs[word, tag] = c / uni_transition_counts[tag]
 
     @classmethod
-    def train_unsupervised(cls, data):
+    def train_unsupervised(cls, data, max_iter=1000):
 
-        states = cls._tri_tag_probs
-        output = cls._emission_probs
+        # Iterate through counts and calculate the respective
+        # tag transition probabilities
+        # cls._tri_tag_probs = defaultdict(lambda: 0.0)
+        # cls._bi_tag_probs = defaultdict(lambda: 0.0)
+        # cls._uni_tag_probs = defaultdict(lambda: 0.0)
+        # cls._tri_tag_logprob = defaultdict(lambda: 0.0)
+        # cls._smoothed_tag_probs = defaultdict(lambda: 0.0)
+
+        cls._emission_counts = defaultdict(int)
+        cls._uni_transition_counts = defaultdict(int)
+        cls._bi_transition_counts = defaultdict(int)
+        cls._tri_transition_counts = defaultdict(int)
+        cls._n = 0  # to count number of total (global) tags/states
+
+        # states = cls._tri_tag_probs
+        # output = cls._emission_probs
 
         # Repeat until convergence
-        for sent in data:
+        converged = False
+        iter = 1
+        while not converged and iter < max_iter:
 
-            cls.baum_welch(sent)
+            print('iter ', iter)
 
-            print(sent)
-            break
+            for sent in data:
+
+                cls.baum_welch(sent, iter)
+
+                print(sent)
+
+            for t, u, v in cls._tri_transition_counts:
+                # print(t, u, v, cnt)
+                cls._tri_tag_probs[t, u, v] = float(cls._tri_transition_counts[t, u, v] / cls._bi_transition_counts[t, u])
+                cls._bi_tag_probs[u, v] = float(cls._bi_transition_counts[u, v] / cls._uni_transition_counts[u])
+                cls._uni_tag_probs[v] = float(cls._uni_transition_counts[v] / cls._n)
+
+            emission_probs = defaultdict(int)
+            for (word, tag), c in cls._emission_counts.items():
+                emission_probs[word, tag] = c / cls._uni_transition_counts[tag]
+
+            # Check if lambda values have converged
+            converged = True
+            last_emission_probs = cls._emission_probs
+            for (word, tag), p in emission_probs.items():
+                if np.abs(p - last_emission_probs[word, tag]) > .0001:  # tolerance = e
+                    converged = False
+            cls._emission_probs = emission_probs
+            iter += 1
 
 
     @classmethod
@@ -940,7 +984,7 @@ def write_results(model, gold, params):
         gold_untagged_sents.append(untagged_sent)
 
     # **Tag text and calculate and write accuracy**
-    with open('results2-cz_unseg.txt', 'a') as f:
+    with open('results-en-bw.txt', 'a') as f:
         correct = 0
         for i, sent in enumerate(gold_untagged_sents):
             # f.write('sentence ' + str(i) + '\n')
@@ -963,8 +1007,8 @@ def write_results(model, gold, params):
 
 if __name__ == '__main__':
 
-    stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
-    # stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    # stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
+    stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     words = []
     tags = []
     for line in stream:
@@ -974,9 +1018,9 @@ if __name__ == '__main__':
             words.append(word)
             tags.append(tag)
 
-
-    # Get test data for parts I and II, the last 40k
-
+    # # *************************************************************************** #
+    # # Get test data for Part I (Viterbi)
+    #
     # # With segmentation of sentences
     #
     # test_data = []
@@ -1026,64 +1070,62 @@ if __name__ == '__main__':
     #         sent = []
     #         continue
     #     sent.append((word, tag))  # heldout_data = [heldout_data]
-
     #
-    # Without segmentation of sentences
-
-    # Get test data, the last 40k
-    test_data = []
-    for word, tag in zip(words[-40000:], tags[-40000:]):
-        test_data.append((word, tag))
-    test_data = [
-        test_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
-
-    # Get heldout data, the mid 20k (not used in brill).
-    # Not used for this part, and just for show (not computed below)
-    heldout_data = []
-    for word, tag in zip(words[-60000:-40000], tags[-60000:-40000]):
-        heldout_data.append((word, tag))
-    heldout_data = [heldout_data]
-
-    # Get training data, the first ~20k
-    train_data = []
-    for word, tag in zip(words[:-60000], tags[:-60000]):
-        train_data.append((word, tag))
-    train_data = [
-        train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
-
-
-    # Task #1 **Train Viterbi**
-
-    # Init and Train model
-    tagger = HMMTagger.train(train_data)
-
-    # ***Smooth params/Heldout***
-    # NB: Uncomment for Viterbi (not BW)
-
-    params = 'heldout_data = None, mode = None'
-    tagger.initialize_params(heldout_data=None, mode=None)
-    write_results(tagger, test_data, params)
-
-    tagger.initialize_params(heldout_data=None, mode='unk_threshold')
-    params = "heldout_data = None, mode = 'unk_threshold'"
-    write_results(tagger, test_data, params)
-
-    params = "heldout_data, mode = 'unk_threshold'"
-    tagger.initialize_params(heldout_data, mode='unk_threshold')
-    write_results(tagger, test_data, params)
-
-    params = "heldout_data, mode = 'unk_heldout'"
-    tagger.initialize_params(heldout_data, mode='unk_heldout')
-    write_results(tagger, test_data, params)
-
-    # print(tagger._lambdas)
-    # print(tagger._emissions)
+    #
+    # # Without segmentation of sentences
+    #
+    # # Get test data, the last 40k
+    # test_data = []
+    # for word, tag in zip(words[-40000:], tags[-40000:]):
+    #     test_data.append((word, tag))
+    # test_data = [
+    #     test_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
+    #
+    # # Get heldout data, the mid 20k (not used in brill).
+    # # Not used for this part, and just for show (not computed below)
+    # heldout_data = []
+    # for word, tag in zip(words[-60000:-40000], tags[-60000:-40000]):
+    #     heldout_data.append((word, tag))
+    # heldout_data = [heldout_data]
+    #
+    # # Get training data, the first ~20k
+    # train_data = []
+    # for word, tag in zip(words[:-60000], tags[:-60000]):
+    #     train_data.append((word, tag))
+    # train_data = [
+    #     train_data]  # convert to nltk list(list(tuples)), i.e. a list of list of sentences (here only one large sentence)
 
 
+    # # ******************************************************************** #
+    # # Task #1 **Train Viterbi**
+    #
+    # # Init and Train model
+    # tagger = HMMTagger.train(train_data)
+    #
+    # # ***Smooth params/Heldout***
+    # # NB: Uncomment for Viterbi (not BW)
+    #
+    # # params = 'heldout_data = None, mode = None'
+    # # tagger.initialize_params(heldout_data=None, mode=None)
+    # # write_results(tagger, test_data, params)
+    # #
+    # # tagger.initialize_params(heldout_data=None, mode='unk_threshold')
+    # # params = "heldout_data = None, mode = 'unk_threshold'"
+    # # write_results(tagger, test_data, params)
+    #
+    # # params = "heldout_data, mode = 'unk_threshold'"
+    # # tagger.initialize_params(heldout_data, mode='unk_threshold')
+    # # write_results(tagger, test_data, params)
+    #
+    # params = "heldout_data, mode = 'unk_heldout'"
+    # tagger.initialize_params(heldout_data, mode='unk_heldout')
+    # write_results(tagger, test_data, params)
+    #
+    #
+    #
 
 
-
-        # For test
+    # For test
     # heldout_data = []
     # with open('heldout.txt', 'r') as f:
     #     sent = []
@@ -1240,44 +1282,119 @@ if __name__ == '__main__':
     # print(tagger._bi_transition_counts['.', '</s>'])
 
 
-    # # Train init params for BW
-    # tagger = HMMTagger.train(train_data)
-    # tagger.initialize_params(heldout_data=None, mode=None)
-    # # tagger.initialize_params(heldout_data, mode='unk_heldout')
-    #
-    # print(tagger._tri_tag_probs)
 
-    # # Task #2. For remaining words in train data, strip tags
-    # data = []
-    # sent = []
-    # pos1 = pos3 + 1     # index = ~10000
-    # pos2 = 40000
-    # try:
-    #     while words[pos1] != '###':
-    #         pos1 += 1
-    #     # while words[pos2] != '###':
-    #     #     pos2 += 1
-    # except IndexError:
-    #     print(sys.stderr)
-    # pos1 += 1  # this is the first sentence in set
-    # pos2 += 1  # this is the final sentence in set
-    #
-    # for word in words[pos1:pos2]:
-    #     if word == '###':
-    #         data.append(sent)
-    #         sent = []
-    #         continue
-    #     sent.append(word)    # heldout_data = [heldout_data]
-    #
+
+
+    # ************************************************************** #
+    # Task #2. For remaining words in train data, strip tags
+
+    # With segmentation of sentences
+
+    test_data = []
+    sent = []
+    pos1 = -40000
+    while words[pos1] != '###':
+        pos1 += 1
+    pos1 += 1  # skip first '#'
+    for word, tag in zip(words[pos1:], tags[pos1:]):
+        if word == '###':
+            if sent:
+                test_data.append(sent)
+            sent = []
+            continue
+        sent.append((word, tag))
+
+    # Get heldout data, the mid 20k (not used in brill).
+    heldout_data = []
+    sent = []
+    # pos2 = -60000
+    pos2 = pos1
+    pos1 = -60000
+    while words[pos1] != '###':
+        pos1 += 1
+    pos1 += 1  # skip first '#'
+    end_train_data = pos1   # mark pos
+    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
+        # for word, tag in zip(words[pos2:pos1 - 1], tags[pos2:pos1 - 1]):
+        if word == '###':
+            if sent:
+                heldout_data.append(sent)
+            sent = []
+            continue
+        sent.append((word, tag))
+
+    # Get initial train data, the first ~10k
+    train_data = []
+    sent = []
+    pos2 = 10000
+    pos1 = 0
+    while words[pos1] != '###':
+        pos1 += 1
+    pos1 += 1  # this is the first sentence in set
+    while words[pos2] != '###':
+        pos2 += 1
+    for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
+        if word == '###':
+            if sent:
+                train_data.append(sent)
+            sent = []
+            continue
+        sent.append((word, tag))
+
+    # Strip off tags from remaining training data to train with
+    # BW, i.e. initial 10000 to -60000 words
+    data = []
+    sent = []
+    pos1 = pos2     # index = ~10000
+    pos2 = end_train_data
+    while words[pos1] != '###':
+        pos1 += 1
+    pos1 += 1  # this is the first sentence in set
+
+    for word in words[pos1:pos2]:
+        if word == '###':
+            data.append(sent)
+            sent = []
+            continue
+        sent.append(word)    # heldout_data = [heldout_data]
+
     # print(data)
+
+    # Train params using BW
+
+    # Init and Train model
+    tagger = HMMTagger.train(train_data)
+
+    # ***Smooth params/Heldout***
+
+    # params = 'heldout_data = None, mode = None'
+    # tagger.initialize_params(heldout_data=None, mode=None)
+    # write_results(tagger, test_data, params)
     #
-    # # Train params using BW
+    # tagger.initialize_params(heldout_data=None, mode='unk_threshold')
+    # params = "heldout_data = None, mode = 'unk_threshold'"
+    # write_results(tagger, test_data, params)
+
+    params = "heldout_data, mode = 'unk_threshold'"
+    tagger.initialize_params(heldout_data, mode='unk_threshold')
+
+    print('init training')
+    print(tagger._emission_probs)
+    print(tagger._lambdas)
+
+    print('unsupervised training')
+
+    tagger.train_unsupervised(data, 2)
+    write_results(tagger, test_data, params)
+
+    # params = "heldout_data, mode = 'unk_heldout'"
+    # tagger.initialize_params(heldout_data, mode='unk_heldout')
+    # write_results(tagger, test_data, params)
+
+    # print(tagger._emissions)
     # print(tagger._emission_probs)
     # print(tagger._lambdas)
     #
-    #
-    # tagger.train_unsupervised(data)
-
 
 
 
