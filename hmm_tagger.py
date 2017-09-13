@@ -475,7 +475,7 @@ class HMMTagger:
             bi_transition_counts.update(bi_tc)
             tri_transition_counts.update(tri_tc)
 
-            # print(sent)
+            print(sent)
             # print(emission_counts, uni_transition_counts, bi_transition_counts, tri_transition_counts)
 
 
@@ -1544,7 +1544,7 @@ if __name__ == '__main__':
     accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
     e = .001
 
-    print(accuracy)
+    print(iter, accuracy)
 
     while abs(accuracy - prev_accuracy) > e:
         iter += 1
@@ -1552,7 +1552,7 @@ if __name__ == '__main__':
         new_tagger = tagger.train_unsupervised(data, interpolate=False)
         accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
 
-        print(accuracy)
+        print(iter, accuracy)
 
 
     # print(new_tagger._tags)
