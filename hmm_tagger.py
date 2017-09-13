@@ -1126,7 +1126,7 @@ class HMMTagger:
         #     cls._interpolated_tag_probs[t, u, v] = cls.calculate_interpolated_p(t, u, v, cls._lambdas)
 
 
-def write_results(model, gold, label, fname, interpolate=False):
+def write_results(model, gold, label, fname, iter, interpolate=False):
 
     # Strip tags
     gold_untagged_sents = []
@@ -1158,12 +1158,17 @@ def write_results(model, gold, label, fname, interpolate=False):
         # print(correct)
         # print(n)
         acc = correct / n
-        f.write(label + '\n')
+        f.write(label + str(iter) + '\n')
         f.write('Accuracy = ' + str(acc) + '\n')
 
         return acc
 
 if __name__ == '__main__':
+
+    import pickle
+
+    lang = '_en_'
+    # lang = '_cz_'
 
     # stream = io.TextIOWrapper(sys.stdin.buffer, encoding='iso-8859-2')
     stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
@@ -1447,7 +1452,8 @@ if __name__ == '__main__':
     # Task #2. For remaining words in train data, strip tags
 
     # With segmentation of sentences
-    size = 10050
+
+    end_train_data = -60000      # set size of unsupervised training data/end pos
 
     test_data = []
     sent = []
@@ -1472,7 +1478,9 @@ if __name__ == '__main__':
     while words[pos1] != '###':
         pos1 += 1
     pos1 += 1  # skip first '#'
-    end_train_data = pos1   # mark pos
+
+    end_train_data = pos1   # mark pos ??????
+
     for word, tag in zip(words[pos1:pos2], tags[pos1:pos2]):
         # for word, tag in zip(words[pos2:pos1 - 1], tags[pos2:pos1 - 1]):
         if word == '###':
@@ -1506,7 +1514,7 @@ if __name__ == '__main__':
     sent = []
     pos1 = pos2     # index = ~10000
     # pos2 = end_train_data
-    pos2 = size
+    pos2 = end_train_data
 
     while words[pos1] != '###':
         pos1 += 1
@@ -1550,22 +1558,32 @@ if __name__ == '__main__':
 
     print('unsupervised training')
     iter = 1
+    if end_train_data < 0:
+        size = len(words) - abs(end_train_data) - 10000
+    else:
+        size = abs(end_train_data - 10000)
     prev_accuracy = 0.0
-    new_tagger = tagger.train_unsupervised(data, interpolate=True)
-    label = 'iter = ' + str(iter)
-    fname = 'results-en-bw-' + str(size) + '.txt'
-    accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
-    e = .001
 
+    # Train new tagger, init with lambdas
+    new_tagger = tagger.train_unsupervised(data, interpolate=True)
+
+    # Load pickle
+    # p_file = open('_en_size_50_iter_2.pkl', 'rb')
+    # new_tagger = pickle.load(p_file)
+
+    label = lang + 'size_' + str(size)
+    fname = 'results_bw' + label + '.txt'
+    accuracy = write_results(new_tagger, test_data, label, fname, iter, interpolate=False)
+    pickle._dump(new_tagger, open(label + '_iter_' + str(iter) + '.pkl', 'wb'))
     print(iter, accuracy)
 
+    e = .001
     while abs(accuracy - prev_accuracy) > e:
         prev_accuracy = accuracy
         iter += 1
-        label = 'iter = ' + str(iter)
         new_tagger = tagger.train_unsupervised(data, interpolate=False)
-        accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
-
+        accuracy = write_results(new_tagger, test_data, label, fname, iter, interpolate=False)
+        pickle._dump(new_tagger, open(label+ '_iter_' + str(iter) + '.pkl', 'wb'))
         print(iter, accuracy)
 
 
