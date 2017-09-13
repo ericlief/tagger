@@ -395,7 +395,7 @@ class HMMTagger:
 
                         # For remaining iterations recalculate increments from past probabilities????
                         else:
-                            increment = alpha[i, t, u] * cls._tri_tag_probs(t, u, v) \
+                            increment = alpha[i, t, u] * cls._tri_tag_probs[t, u, v] \
                                         * cls._emission_probs[w, v] * beta[i + 1, u, v]
 
                         # cls._emission_counts[w, v] += increment
@@ -500,9 +500,17 @@ class HMMTagger:
 
         emission_probs = defaultdict(lambda: 0.0)
         for (word, tag), c in emission_counts.items():
-            emission_probs[word, tag] = c / uni_transition_counts[tag]
             words.add(word)
             tags.add(tag)
+            if c == 0 or uni_transition_counts[tag] == 0:
+                emission_probs[word, tag] = 0.0
+                continue
+            try:
+                emission_probs[word, tag] = c / uni_transition_counts[tag]
+            except ZeroDivisionError:
+                emission_probs[word, tag] = 0.0
+
+
         # # Check if lambda values have converged
         # converged = True
         # last_emission_probs = cls._emission_probs
@@ -612,7 +620,7 @@ class HMMTagger:
 
                     else:
                         alpha[i, u, v] = sum(
-                            [alpha[i - 1, p, q] * cls._tri_tag_probs[t, u, v] * cls._emission_probs[w, v]
+                            [alpha[i - 1, p, q] * cls._tri_tag_probs[q, u, v] * cls._emission_probs[w, v]
                              for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
 
                     # Bug??
@@ -625,7 +633,10 @@ class HMMTagger:
             # Recalculate alphas
             for u in cls.possible_tags(i - 1):
                 for v in cls.possible_tags(i):
-                    alpha[i, u, v] = alpha[i, u, v] / normalization_factor_sum
+                    if normalization_factor_sum != 0:
+                        alpha[i, u, v] = alpha[i, u, v] / normalization_factor_sum
+                    else:
+                        alpha[i, u, v] = 0.0
 
         # Final step?
         for t in cls.possible_tags(i):
@@ -692,8 +703,10 @@ class HMMTagger:
             # Recalculate betas
             for s in cls.possible_tags(i - 1):
                 for t in cls.possible_tags(i):
-                    beta[i, s, t] = beta[i, s, t] / normalization_factor_sum
-
+                    if normalization_factor_sum != 0:
+                        beta[i, s, t] = beta[i, s, t] / normalization_factor_sum
+                    else:
+                        beta[i, s, t] = 0.0
         # # Final step?
         # for t in cls.possible_tags(i):
         #     beta[i + 1, t, '</s>'] = sum([beta[i, s, t] * cls.calculate_interpolated_p(s, t, '</s>', L)
@@ -1434,7 +1447,7 @@ if __name__ == '__main__':
     # Task #2. For remaining words in train data, strip tags
 
     # With segmentation of sentences
-    size = 60000
+    size = 10050
 
     test_data = []
     sent = []
@@ -1540,13 +1553,14 @@ if __name__ == '__main__':
     prev_accuracy = 0.0
     new_tagger = tagger.train_unsupervised(data, interpolate=True)
     label = 'iter = ' + str(iter)
-    fname = 'results-en-bw-' + size + '.txt'
+    fname = 'results-en-bw-' + str(size) + '.txt'
     accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
     e = .001
 
     print(iter, accuracy)
 
     while abs(accuracy - prev_accuracy) > e:
+        prev_accuracy = accuracy
         iter += 1
         label = 'iter = ' + str(iter)
         new_tagger = tagger.train_unsupervised(data, interpolate=False)
