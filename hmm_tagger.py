@@ -244,11 +244,12 @@ class HMMTagger:
         return HMMTagger.backtrace(path, n)
 
     @classmethod
-    def tri_tag(cls, sent, k):
+    def tri_tag(cls, sent, k=7, interpolate=True):
 
         n = len(sent)
         # k = 10              # this is k_best beam search
-        L = cls._lambdas
+        if interpolate:
+            L = cls._lambdas
         viterbi = {}
         path = {}
 
@@ -279,7 +280,7 @@ class HMMTagger:
                     # viterbi[i, u, v], t_max = max([(
                     #      viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
                     #      for t in cls.possible_tags(i - 2)])
-                    if L:
+                    if interpolate:
                         score, t_max = max([(
                          viterbi[i - 1, t, u] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v], t)
                          for t in active_tags_t])
@@ -309,7 +310,7 @@ class HMMTagger:
         # fixed
         # prob, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
         #                                       for t in cls._tags for u in cls._tags])
-        if L:
+        if interpolate:
             score, t_max, u_max = max([(viterbi[n, t, u] * cls.calculate_interpolated_p(t, u, '</s>', L), t, u)
                                   for t in active_tags_t for u in active_tags_u])
         else:
@@ -333,7 +334,8 @@ class HMMTagger:
 
 
     @classmethod
-    def baum_welch(cls, sent, iter):
+    def baum_welch(cls, sent, emission_counts, uni_transition_counts, \
+                               bi_transition_counts, tri_transition_counts, interpolate=False):
         # alpha = {}
         # n = len(sent)
         # w = cls.next_word(sent, 0)
@@ -348,10 +350,13 @@ class HMMTagger:
             # Inductive step
 
         # Compute forward (alpha) and backward (beta) probability matrices
-        alpha = cls.forward(sent)
+        alpha = cls.forward(sent, interpolate)
         # print(alpha)
-        beta = cls.backward(sent)
-        #print(beta)
+        beta = cls.backward(sent, interpolate)
+        # print(beta)
+
+        # print('poss tags')
+        # print(cls._tags)
 
         # for t in cls._tags:
         #     print(beta[0, '<s>', '<s>'])
@@ -359,8 +364,11 @@ class HMMTagger:
 
         # Collect counts (E-Step)
         m = len(sent)   # number of output symbols (local)
-        cls._n += m      # to count number of total (global) tags/states
-        L = cls._lambdas
+        # cls._n += m      # to count number of total (global) tags/states
+
+        if interpolate:
+            L = cls._lambdas
+
         # emission_counts = {}
         # uni_transition_counts = {}
         # bi_transition_counts = {}
@@ -376,24 +384,36 @@ class HMMTagger:
                 for u in cls.possible_tags(i):
                     for v in cls.possible_tags(i+1):
 
+
                         # Calculate fraction count/increment value
 
                         # Use smoothed params obtained from first 10k of training data????
-                        if iter == 1:
+                        # if iter == 1:
+                        if interpolate:
                             increment = alpha[i, t, u] * cls.calculate_interpolated_p(t, u, v, L) \
                                         * cls._emission_probs[w, v] * beta[i+1, u, v]
 
                         # For remaining iterations recalculate increments from past probabilities????
                         else:
-                            increment = alpha[i, t, u] * cls._tri_transition_probs(t, u, v) \
+                            increment = alpha[i, t, u] * cls._tri_tag_probs(t, u, v) \
                                         * cls._emission_probs[w, v] * beta[i + 1, u, v]
 
-                        cls._emission_counts[w, v] += increment
-                        cls._uni_transition_counts[t] += increment             # unigram tag transition count
-                        cls._bi_transition_counts[t, u] += increment           # bigram tag transition count
-                        cls._tri_transition_counts[t, u, v] += increment       # trigram tag transition count
+                        # cls._emission_counts[w, v] += increment
+                        # cls._uni_transition_counts[t] += increment             # unigram tag transition count
+                        # cls._bi_transition_counts[t, u] += increment           # bigram tag transition count
+                        # cls._tri_transition_counts[t, u, v] += increment       # trigram tag transition count
 
-                        # state_count[u] += increment
+                        # print(w,t,u,v,increment)
+
+                        if increment != increment:
+                            break
+                        emission_counts[w, v] += increment
+                        uni_transition_counts[t] += increment  # unigram tag transition count
+                        bi_transition_counts[t, u] += increment  # bigram tag transition count
+                        tri_transition_counts[t, u, v] += increment  # trigram tag transition count
+
+        return emission_counts, uni_transition_counts, bi_transition_counts, tri_transition_counts
+        # state_count[u] += increment
 
 
 
@@ -409,7 +429,104 @@ class HMMTagger:
         #     emission_probs[word, tag] = c / uni_transition_counts[tag]
 
     @classmethod
-    def train_unsupervised(cls, data, max_iter=1000):
+    def train_unsupervised(cls, data, interpolate=False):
+
+        # print(data)
+        # Iterate through counts and calculate the respective
+        # tag transition probabilities
+        # cls._tri_tag_probs = defaultdict(lambda: 0.0)
+        # cls._bi_tag_probs = defaultdict(lambda: 0.0)
+        # cls._uni_tag_probs = defaultdict(lambda: 0.0)
+        # cls._tri_tag_logprob = defaultdict(lambda: 0.0)
+        # cls._smoothed_tag_probs = defaultdict(lambda: 0.0)
+
+        emission_counts = defaultdict(lambda: 0.0)
+        uni_transition_counts = defaultdict(lambda: 0.0)
+        bi_transition_counts = defaultdict(lambda: 0.0)
+        tri_transition_counts = defaultdict(lambda: 0.0)
+        words = set([])
+        tags = set([])
+        # cls._n = 0  # to count number of total (global) tags/states
+
+        # states = cls._tri_tag_probs
+        # output = cls._emission_probs
+
+        # Repeat until convergence
+        # converged = False
+        # iter = 1
+        # while not converged:
+
+            # print('iter ', iter)
+
+        for sent in data:
+            # print(sent)
+
+            ec, uni_tc, bi_tc, tri_tc = \
+                cls.baum_welch(sent, emission_counts, uni_transition_counts, \
+                               bi_transition_counts, tri_transition_counts, interpolate)
+
+            # tagger._emission_counts += emission_counts
+            # tagger._uni_transition_counts += uni_transition_counts
+            # tagger._bi_transition_counts += bi_transition_counts
+            # tagger._tri_transition_counts += tri_transition_counts
+
+            emission_counts.update(ec)
+            uni_transition_counts.update(uni_tc)
+            bi_transition_counts.update(bi_tc)
+            tri_transition_counts.update(tri_tc)
+
+            # print(sent)
+            # print(emission_counts, uni_transition_counts, bi_transition_counts, tri_transition_counts)
+
+
+
+        tri_tag_probs = defaultdict(lambda: 0.0)
+        for t, u, v in tri_transition_counts:
+            # print(t, u, v, cnt)
+            # cls._bi_tag_probs[u, v] = float(cls._bi_transition_counts[u, v] / cls._uni_transition_counts[u])
+            # cls._uni_tag_probs[v] = float(cls._uni_transition_counts[v] / cls._n)
+
+
+            if tri_transition_counts[t, u, v] == 0:
+                # print('tri == 0')
+                tri_tag_probs[t, u, v] == 0
+                continue
+            # if bi_transition_counts[t, u] == 0:
+            #     print('zero bigram')
+            try:
+                tri_tag_probs[t, u, v] = float(tri_transition_counts[t, u, v] / bi_transition_counts[t, u])
+            except ZeroDivisionError:
+                tri_tag_probs[t, u, v] = 0.0
+
+        emission_probs = defaultdict(lambda: 0.0)
+        for (word, tag), c in emission_counts.items():
+            emission_probs[word, tag] = c / uni_transition_counts[tag]
+            words.add(word)
+            tags.add(tag)
+        # # Check if lambda values have converged
+        # converged = True
+        # last_emission_probs = cls._emission_probs
+        # for (word, tag), p in emission_probs.items():
+        #     if np.abs(p - last_emission_probs[word, tag]) > .0001:  # tolerance = e
+        #         converged = False
+
+        # tagger = HMMTagger()
+        # # tagger._emission_probs = defaultdict(lambda: 0.0)
+        #
+        # tagger._emission_probs = emission_probs
+        # tagger._tri_tag_probs = tri_tag_probs
+        # tagger._tags = tags
+        # tagger._words = words
+        # iter += 1
+
+        cls._tri_tag_probs = tri_tag_probs
+        cls._emission_probs = emission_probs
+
+        # return tagger
+        return cls
+
+    @classmethod
+    def train_unsupervised2(cls, data, max_iter=1000):
 
         # Iterate through counts and calculate the respective
         # tag transition probabilities
@@ -444,8 +561,8 @@ class HMMTagger:
             for t, u, v in cls._tri_transition_counts:
                 # print(t, u, v, cnt)
                 cls._tri_tag_probs[t, u, v] = float(cls._tri_transition_counts[t, u, v] / cls._bi_transition_counts[t, u])
-                cls._bi_tag_probs[u, v] = float(cls._bi_transition_counts[u, v] / cls._uni_transition_counts[u])
-                cls._uni_tag_probs[v] = float(cls._uni_transition_counts[v] / cls._n)
+                # cls._bi_tag_probs[u, v] = float(cls._bi_transition_counts[u, v] / cls._uni_transition_counts[u])
+                # cls._uni_tag_probs[v] = float(cls._uni_transition_counts[v] / cls._n)
 
             emission_probs = defaultdict(int)
             for (word, tag), c in cls._emission_counts.items():
@@ -462,7 +579,7 @@ class HMMTagger:
 
 
     @classmethod
-    def forward(cls, sent):
+    def forward(cls, sent, interpolate=False):
 
         alpha = {}
         n = len(sent)
@@ -488,8 +605,16 @@ class HMMTagger:
                 for v in cls.possible_tags(i):
 
                     # Alpha or forward prob at one node (u, v)
-                    alpha[i, u, v] = sum([alpha[i-1, p, q] * cls.calculate_interpolated_p(q, u, v, L) * cls._emission_probs[w, v]
+                    if interpolate:
+
+                        alpha[i, u, v] = sum([alpha[i-1, p, q] * cls.calculate_interpolated_p(q, u, v, L) * cls._emission_probs[w, v]
                                           for p in cls.possible_tags(i-2) for q in cls.possible_tags(i-1)])
+
+                    else:
+                        alpha[i, u, v] = sum(
+                            [alpha[i - 1, p, q] * cls._tri_tag_probs[t, u, v] * cls._emission_probs[w, v]
+                             for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
+
                     # Bug??
                     # alpha[i, u, v] = sum([alpha[i - 1, p, q] * cls.calculate_interpolated_p(p, q, v, L) * cls._emission_probs[w, v]
                     #  for p in cls.possible_tags(i - 2) for q in cls.possible_tags(i - 1)])
@@ -504,13 +629,16 @@ class HMMTagger:
 
         # Final step?
         for t in cls.possible_tags(i):
-            alpha[i+1, t, '</s>'] = sum([alpha[i, s, t] * cls.calculate_interpolated_p(s, t, '</s>', L)
+            if interpolate:
+                alpha[i+1, t, '</s>'] = sum([alpha[i, s, t] * cls.calculate_interpolated_p(s, t, '</s>', L)
                                         for s in cls.possible_tags(i)])
-
+            else:
+                alpha[i + 1, t, '</s>'] = sum([alpha[i, s, t] * cls._tri_tag_probs[s, t, '</s>']
+                                               for s in cls.possible_tags(i)])
         return alpha
 
     @classmethod
-    def backward(cls, sent):
+    def backward(cls, sent, interpolate=False):
 
         beta = {}
         n = len(sent)
@@ -521,11 +649,21 @@ class HMMTagger:
         # Initialization
         for t in cls._tags:
             for u in cls._tags:
-                beta[n+1, u, '</s>'] = cls.calculate_interpolated_p(t, u, '</s>', L)
+                if interpolate:
+                    beta[n+1, u, '</s>'] = cls.calculate_interpolated_p(t, u, '</s>', L)
+                else:
+                    beta[n+1, u, '</s>'] = cls._tri_tag_probs[t, u, '</s>']
+
+
         for s in cls._tags:
             for t in cls._tags:
-                beta[n, s, t] = sum([beta[n+1, u, '</s>'] * cls.calculate_interpolated_p(t, u, '</s>', L)
+                if interpolate:
+                    beta[n, s, t] = sum([beta[n+1, u, '</s>'] * cls.calculate_interpolated_p(t, u, '</s>', L)
                          for u in cls._tags])
+                else:
+                    beta[n, s, t] = sum([beta[n + 1, u, '</s>'] * cls._tri_tag_probs[t, u, '</s>']
+                                         for u in cls._tags])
+
 
         # Iterate through sequence of length n
         for i in range(n-1, -1, -1):
@@ -541,8 +679,13 @@ class HMMTagger:
             for s in cls.possible_tags(i-1):
                 for t in cls.possible_tags(i):
                     # Beta or backward prob at one node (u, v)
-                    beta[i, s, t] = sum([beta[i + 1, u, v] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v]
+                    if interpolate:
+                        beta[i, s, t] = sum([beta[i + 1, u, v] * cls.calculate_interpolated_p(t, u, v, L) * cls._emission_probs[w, v]
                                          for u in cls.possible_tags(i) for v in cls.possible_tags(i+1)])
+                    else:
+                        beta[i, s, t] = sum(
+                            [beta[i + 1, u, v] * cls._tri_tag_probs[t, u, v] * cls._emission_probs[w, v]
+                             for u in cls.possible_tags(i) for v in cls.possible_tags(i + 1)])
                     # Update normalization sum
                     normalization_factor_sum += beta[i, s, t]
 
@@ -970,7 +1113,7 @@ class HMMTagger:
         #     cls._interpolated_tag_probs[t, u, v] = cls.calculate_interpolated_p(t, u, v, cls._lambdas)
 
 
-def write_results(model, gold, params):
+def write_results(model, gold, label, fname, interpolate=False):
 
     # Strip tags
     gold_untagged_sents = []
@@ -984,12 +1127,12 @@ def write_results(model, gold, params):
         gold_untagged_sents.append(untagged_sent)
 
     # **Tag text and calculate and write accuracy**
-    with open('results-en-bw.txt', 'a') as f:
+    with open(fname, 'a') as f:
         correct = 0
         for i, sent in enumerate(gold_untagged_sents):
             # f.write('sentence ' + str(i) + '\n')
             # f.write(' '.join(sent) + '\n')
-            tags = tagger.tri_tag(sent, k=8)
+            tags = model.tri_tag(sent, 8, interpolate)
             # print(sent)
             # print(tags)
             for j, (w, t) in enumerate(zip(sent, tags)):
@@ -1002,8 +1145,10 @@ def write_results(model, gold, params):
         # print(correct)
         # print(n)
         acc = correct / n
-        f.write(params + '\n')
+        f.write(label + '\n')
         f.write('Accuracy = ' + str(acc) + '\n')
+
+        return acc
 
 if __name__ == '__main__':
 
@@ -1289,6 +1434,7 @@ if __name__ == '__main__':
     # Task #2. For remaining words in train data, strip tags
 
     # With segmentation of sentences
+    size = 60000
 
     test_data = []
     sent = []
@@ -1346,10 +1492,16 @@ if __name__ == '__main__':
     data = []
     sent = []
     pos1 = pos2     # index = ~10000
-    pos2 = end_train_data
+    # pos2 = end_train_data
+    pos2 = size
+
     while words[pos1] != '###':
         pos1 += 1
     pos1 += 1  # this is the first sentence in set
+
+    # OJO - FIX later
+    while words[pos2] != '###':
+        pos2 += 1
 
     for word in words[pos1:pos2]:
         if word == '###':
@@ -1375,17 +1527,40 @@ if __name__ == '__main__':
     # params = "heldout_data = None, mode = 'unk_threshold'"
     # write_results(tagger, test_data, params)
 
-    params = "heldout_data, mode = 'unk_threshold'"
     tagger.initialize_params(heldout_data, mode='unk_threshold')
 
     print('init training')
-    print(tagger._emission_probs)
-    print(tagger._lambdas)
+    # print(tagger._emission_probs)
+    # print(tagger._lambdas)
+    # def write_results(model, gold, label, fname, interpolate=False):
+
 
     print('unsupervised training')
+    iter = 1
+    prev_accuracy = 0.0
+    new_tagger = tagger.train_unsupervised(data, interpolate=True)
+    label = 'iter = ' + str(iter)
+    fname = 'results-en-bw-' + size + '.txt'
+    accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
+    e = .001
 
-    tagger.train_unsupervised(data, 2)
-    write_results(tagger, test_data, params)
+    print(accuracy)
+
+    while abs(accuracy - prev_accuracy) > e:
+        iter += 1
+        label = 'iter = ' + str(iter)
+        new_tagger = tagger.train_unsupervised(data, interpolate=False)
+        accuracy = write_results(new_tagger, test_data, label, fname, interpolate=False)
+
+        print(accuracy)
+
+
+    # print(new_tagger._tags)
+    # print(new_tagger._words)
+    # print(new_tagger._n)
+    # print(new_tagger._emiss_probs)
+    # print(new_tagger._tri_tag_probs)
+    # print(new_tagger._tri_transition_counts)
 
     # params = "heldout_data, mode = 'unk_heldout'"
     # tagger.initialize_params(heldout_data, mode='unk_heldout')
